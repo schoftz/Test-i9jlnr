@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Magic Sub - AI Subtitle Generator</title>
+    <link rel="stylesheet" href="style.css" />
+    <!-- Module Scripts -->
+    <script src="modules/settingsManager.js"></script>
+    <script src="modules/premiereAPI.js"></script>
+    <script src="modules/whisperAPI.js"></script>
+    <script src="modules/captionGenerator.js"></script>
+    <script src="modules/animationEngine.js"></script>
+    <script src="modules/audioExtractor.js"></script>
+    <!-- Main Application -->
+    <script src="main.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <header class="header">
+        <h1>✨ Magic Sub</h1>
+        <p class="subtitle">AI-Powered Subtitle Generator</p>
+      </header>
+
+      <!-- Timeline Section -->
+      <section class="section">
+        <h3>1️⃣ Timeline Selection</h3>
+        <div class="timeline-controls">
+          <button id="btnSetIn" class="btn btn-primary">Set In Point</button>
+          <button id="btnSetOut" class="btn btn-primary">Set Out Point</button>
+          <button id="btnClear" class="btn btn-secondary">Clear</button>
+        </div>
+        <div class="info-box">
+          <p>In: <span id="inTime">--:--:--:--</span></p>
+          <p>Out: <span id="outTime">--:--:--:--</span></p>
+          <p>Duration: <span id="duration">0s</span></p>
+        </div>
+      </section>
+
+      <!-- Audio Export Section -->
+      <section class="section">
+        <h3>2️⃣ Export Audio</h3>
+        <button id="btnExportAudio" class="btn btn-primary btn-full">Export As WAV</button>
+        <div id="exportStatus" class="status-box" style="display:none;"></div>
+      </section>
+
+      <!-- API Configuration Section -->
+      <section class="section">
+        <h3>3️⃣ Whisper API Settings</h3>
+        <div class="form-group">
+          <label for="apiKey">API Key:</label>
+          <input type="password" id="apiKey" placeholder="Enter your OpenAI API key" />
+          <button id="btnTestAPI" class="btn btn-secondary">Test API</button>
+        </div>
+      </section>
+
+      <!-- Processing Section -->
+      <section class="section">
+        <h3>4️⃣ Generate Subtitles</h3>
+        <div class="form-group">
+          <label for="language">Language:</label>
+          <select id="language">
+            <option value="tr">Türkçe</option>
+            <option value="en">English</option>
+            <option value="es">Español</option>
+            <option value="fr">Français</option>
+            <option value="de">Deutsch</option>
+          </select>
+        </div>
+        <button id="btnTranscribe" class="btn btn-primary btn-full">Transcribe & Generate</button>
+        <div id="processingStatus" class="status-box" style="display:none;"></div>
+      </section>
+
+      <!-- Presets Section -->
+      <section class="section">
+        <h3>5️⃣ Preset Styles</h3>
+        <div class="preset-grid">
+          <button id="preset-tiktok" class="preset-btn" data-preset="tiktok">
+            <span class="preset-icon">🎵</span>
+            <span>TikTok</span>
+          </button>
+          <button id="preset-reels" class="preset-btn" data-preset="reels">
+            <span class="preset-icon">📱</span>
+            <span>Reels</span>
+          </button>
+          <button id="preset-shorts" class="preset-btn" data-preset="shorts">
+            <span class="preset-icon">▶️</span>
+            <span>Shorts</span>
+          </button>
+          <button id="preset-custom" class="preset-btn" data-preset="custom">
+            <span class="preset-icon">⚙️</span>
+            <span>Custom</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Settings Section -->
+      <section class="section">
+        <h3>⚙️ Caption Settings</h3>
+        <div class="settings-grid">
+          <div class="setting-item">
+            <label for="fontSize">Font Size:</label>
+            <input type="number" id="fontSize" value="24" min="12" max="72" />
+          </div>
+          <div class="setting-item">
+            <label for="fontColor">Font Color:</label>
+            <input type="color" id="fontColor" value="#FFFFFF" />
+          </div>
+          <div class="setting-item">
+            <label for="bgColor">Background:</label>
+            <input type="color" id="bgColor" value="#000000" />
+          </div>
+          <div class="setting-item">
+            <label for="opacity">Opacity:</label>
+            <input type="range" id="opacity" min="0" max="100" value="100" />
+          </div>
+        </div>
+        <div class="setting-full">
+          <label for="animation">Animation Type:</label>
+          <select id="animation">
+            <option value="none">None</option>
+            <option value="fade">Fade In/Out</option>
+            <option value="slide">Slide In/Out</option>
+            <option value="pop">Pop In/Out</option>
+          </select>
+        </div>
+        <button id="btnSaveSettings" class="btn btn-secondary">Save Settings</button>
+      </section>
+
+      <!-- Import/Export Results -->
+      <section class="section">
+        <h3>📊 Results</h3>
+        <div id="resultBox" class="result-box" style="display:none;">
+          <p id="resultText"></p>
+        </div>
+        <button id="btnApplyCaptions" class="btn btn-primary btn-full" style="display:none;">Apply Captions to Track</button>
+      </section>
+
+      <!-- Footer -->
+      <footer class="footer">
+        <p>Magic Sub v1.0.0 | Powered by Whisper API</p>
+      </footer>
+    </div>
+  </body>
+</html>
