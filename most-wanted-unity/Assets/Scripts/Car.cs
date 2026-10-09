@@ -87,7 +87,7 @@ namespace MostWanted
         Vector3 gPrevVel; bool gHas;
         float bodyRoll, bodyRollV, bodyPitch, bodyPitchV, prevSteerIn;
         float curSteer, uprightTimer, shiftTimer, limiterT;
-        Vector3 lastVel; bool hasLastVel; int burstCount;
+        Vector3 lastVel; bool hasLastVel; int burstCount; float lastBurstT = -10f;
         float sinceShift = 1f;
         float handbrakeBlend, liftBlend;
         float suspK, suspC;
@@ -231,12 +231,13 @@ namespace MostWanted
             if (hasLastVel && !locked)
             {
                 bool burst = v.magnitude - lastVel.magnitude > 15f || v.y - lastVel.y > 10f || Mathf.Abs(rb.angularVelocity.x) + Mathf.Abs(rb.angularVelocity.z) > 10f;
+                if (burst && Time.time - lastBurstT < 0.3f) burst = false;   // art arda düzeltme yok (her adımda hız geri alınıp araç kilitlenmesin)
                 if (burst)
                 {
                     v = new Vector3(lastVel.x, Mathf.Min(lastVel.y, 0f), lastVel.z);
                     U.SetVel(rb, v);
                     Vector3 av0 = rb.angularVelocity; rb.angularVelocity = new Vector3(Mathf.Clamp(av0.x, -1f, 1f), av0.y, Mathf.Clamp(av0.z, -1f, 1f));
-                    burstCount++;
+                    burstCount++; lastBurstT = Time.time;
                     if (Time.time - lastBurstLog > 5f)
                     {
                         lastBurstLog = Time.time;
@@ -718,6 +719,17 @@ namespace MostWanted
             if (isPlayer && c.rigidbody != null && hasLastVel && c.rigidbody.GetComponent<TrafficDriver>() != null)
             {
                 // "hayalet" trafik: ekranda çizilmeyen (görünmez) bir trafik aracıyla çarpışma olmaz — iki araç birbirinin içinden geçer
+                // uzak modda (kinematik, yola "raylı") trafik aracı duvar gibi davranır: çarpışma yok sayılır, araç fiziğe geçirilir
+                var td = c.rigidbody.GetComponent<TrafficDriver>();
+                if (c.rigidbody.isKinematic)
+                {
+                    foreach (var oc in c.rigidbody.GetComponentsInChildren<Collider>())
+                        foreach (var mc in GetComponentsInChildren<Collider>()) Physics.IgnoreCollision(oc, mc);
+                    U.SetVel(rb, lastVel);
+                    Vector3 av2 = rb.angularVelocity; rb.angularVelocity = new Vector3(0f, av2.y, 0f);
+                    td.SetFar(false);
+                    return;
+                }
                 bool seen = false;
                 foreach (var r in c.rigidbody.GetComponentsInChildren<Renderer>())
                     if (r.enabled && r.isVisible && !(r is ParticleSystemRenderer)) { seen = true; break; }

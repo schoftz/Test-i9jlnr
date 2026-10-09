@@ -649,7 +649,7 @@ namespace MostWanted
                     Park(c); active--;
                     if (active < target && Respawn(c, pp)) active++;
                 }
-                else c.SetFar(d > 120f);
+                else c.SetFar(d > Mathf.Max(120f, (Game.I.player != null ? Game.I.player.SpeedKmh / 3.6f : 0f) * 4f));   // hızlıyken yakındaki araçlar erken fiziğe geçer
             }
             if (cars.Count < count && active < target) Spawn(pp);
         }
