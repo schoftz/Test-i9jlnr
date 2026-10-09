@@ -649,6 +649,49 @@ namespace MostWanted
             }
         }
 
+        // ------------------------------------------------------------------ sürüş yüzeyi sorgusu (süs yerleşimi)
+        List<Vector3> dv; List<int> dt; Dictionary<long, List<int>> dHash;
+
+        /// <summary>(x,z) çevresinde (yarıçap) sürülebilir yüzey (yol/kavşak kaplaması) var mı?</summary>
+        public bool Drivable(float x, float z, float radius)
+        {
+            if (dHash == null)
+            {
+                var S = BuildRoadCollider();
+                dv = S.v; dt = new List<int>(); dHash = new Dictionary<long, List<int>>();
+                for (int i = 0; i < S.tag.Count; i++)
+                {
+                    if (S.tag[i] != 0) continue;
+                    int id = dt.Count / 3; dt.Add(S.t[3 * i]); dt.Add(S.t[3 * i + 1]); dt.Add(S.t[3 * i + 2]);
+                    Vector3 a = dv[S.t[3 * i]], b = dv[S.t[3 * i + 1]], c = dv[S.t[3 * i + 2]];
+                    int x0 = Mathf.FloorToInt(Mathf.Min(a.x, Mathf.Min(b.x, c.x)) / 4f), x1 = Mathf.FloorToInt(Mathf.Max(a.x, Mathf.Max(b.x, c.x)) / 4f);
+                    int z0 = Mathf.FloorToInt(Mathf.Min(a.z, Mathf.Min(b.z, c.z)) / 4f), z1 = Mathf.FloorToInt(Mathf.Max(a.z, Mathf.Max(b.z, c.z)) / 4f);
+                    for (int xx = x0; xx <= x1; xx++) for (int zz = z0; zz <= z1; zz++)
+                        {
+                            List<int> l; long k = GKey(xx, zz);
+                            if (!dHash.TryGetValue(k, out l)) dHash[k] = l = new List<int>();
+                            l.Add(id);
+                        }
+                }
+            }
+            for (int s = 0; s < 9; s++)
+            {
+                float px = x, pz = z;
+                if (s < 8) { float a = s * 0.785398f; px += Mathf.Cos(a) * radius; pz += Mathf.Sin(a) * radius; }
+                List<int> l;
+                if (!dHash.TryGetValue(GKey(Mathf.FloorToInt(px / 4f), Mathf.FloorToInt(pz / 4f)), out l)) continue;
+                foreach (int id in l)
+                {
+                    Vector3 a = dv[dt[3 * id]], b = dv[dt[3 * id + 1]], c = dv[dt[3 * id + 2]];
+                    float d = (b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z);
+                    if (Mathf.Abs(d) < 1e-7f) continue;
+                    float u = ((px - a.x) * (c.z - a.z) - (c.x - a.x) * (pz - a.z)) / d, v = ((b.x - a.x) * (pz - a.z) - (px - a.x) * (b.z - a.z)) / d;
+                    if (u >= 0f && v >= 0f && u + v <= 1f) return true;
+                }
+            }
+            return false;
+        }
+
         // ------------------------------------------------------------------ binalar
         public struct OBB { public Vector3 c; public float rotDeg; public Vector3 size; }
 
