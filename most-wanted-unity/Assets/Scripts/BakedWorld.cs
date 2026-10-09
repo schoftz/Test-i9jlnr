@@ -145,8 +145,21 @@ namespace MostWanted
                 }
                 mf.gameObject.isStatic = true;
             }
+            // glTF'te metallicFactor yazılmamışsa varsayılan 1'dir → binalar gökyüzünü yansıtan krom gibi görünür.
+            // Şehir malzemelerini metal olmayan yüzeye çevir.
+            var fixedMats = new HashSet<Material>();
             foreach (var r in inst.GetComponentsInChildren<Renderer>(true))
-                foreach (var m in r.sharedMaterials) if (m != null) m.enableInstancing = true;
+                foreach (var m in r.sharedMaterials)
+                {
+                    if (m == null || !fixedMats.Add(m)) continue;
+                    m.enableInstancing = true;
+                    if (m.HasProperty("metallicFactor")) m.SetFloat("metallicFactor", 0f);
+                    if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", 0f);
+                    if (m.HasProperty("roughnessFactor")) m.SetFloat("roughnessFactor", Mathf.Max(0.75f, m.GetFloat("roughnessFactor")));
+                    if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", Mathf.Min(0.25f, m.GetFloat("_Smoothness")));
+                    if (m.HasProperty("_EnvironmentReflections")) m.SetFloat("_EnvironmentReflections", 0f);
+                }
+            Debug.Log("[MW] Harita malzemeleri düzeltildi (metal=0): " + fixedMats.Count);
             StaticBatchingUtility.Combine(inst);
             Physics.SyncTransforms();
 
