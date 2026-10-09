@@ -79,6 +79,18 @@ namespace MostWanted
             U.SetMainTexScale(side, new Vector2(0.5f, 0.5f));
             roadMats[6] = side;
             roadMats[7] = U.NewMat(new Color(0.6f, 0.6f, 0.58f), 0.2f, 0f);
+            // MW/Road: prosedürel asfalt + ıslak mod (shader yoksa yukarıdaki Lit malzemeler kalır)
+            for (int i = 0; i < 5; i++)
+            {
+                var rm = CityLook.Road(0, RoadTexture(cls[i]), Vector2.one, Color.white, CityGen.Width(cls[i]), CityGen.Lane(cls[i]), 0.2f);
+                if (rm != null) roadMats[i] = rm;
+            }
+            var am = CityLook.Road(1, null, Vector2.one, Color.white, 0f, 3.5f, 0.2f);
+            if (am != null) roadMats[5] = am;
+            var sm = CityLook.Road(2, PavingTexture(), new Vector2(0.5f, 0.5f), new Color(0.66f, 0.65f, 0.62f), 0f, 0f, 0.2f);
+            if (sm != null) roadMats[6] = sm;
+            var cm = CityLook.Road(3, null, Vector2.one, new Color(0.6f, 0.6f, 0.58f), 0f, 0f, 0.25f);
+            if (cm != null) roadMats[7] = cm;
             roadMats[8] = U.NewMat(new Color(0.72f, 0.74f, 0.77f), 0.6f, 0.8f);
             roadMats[9] = U.Emissive(new Color(1f, 0.92f, 0.75f), new Color(2.2f, 1.9f, 1.4f));
         }

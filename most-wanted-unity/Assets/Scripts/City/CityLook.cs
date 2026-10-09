@@ -54,5 +54,20 @@ namespace MostWanted
             m.SetFloat("_Seed", style * 13.7f);
             return m;
         }
+
+        /// <summary>Yol yüzeyi: mode 0 şeritli yol (tex: çizgi dokusu, u enine), 1 düz asfalt, 2 kaldırım (tex: taş), 3 beton/bordür.</summary>
+        public static Material Road(int mode, Texture tex, Vector2 texScale, Color color, float roadWidth, float laneW, float smoothness)
+        {
+            var b = Base("MW_RoadMat");
+            if (b == null) return null;
+            var m = new Material(b) { name = "MW_Yol_" + mode };
+            m.SetColor("_BaseColor", color);
+            if (tex != null) { m.SetTexture("_BaseMap", tex); m.SetTextureScale("_BaseMap", texScale); }
+            m.SetFloat("_Mode", mode);
+            m.SetFloat("_RoadWidth", roadWidth);
+            m.SetFloat("_LaneW", laneW);
+            m.SetFloat("_Smoothness", smoothness);
+            return m;
+        }
     }
 }
