@@ -1,0 +1,4 @@
+Tek araç modellerini buraya koy: <araç_id>.glb (veya .gltf)
+golf_gti.glb, evo_ix.glb, skyline_r34.glb, bmw_m3.glb, porsche_911.glb, amg_gt.glb, audi_r8.glb, gallardo.glb, police_cvpi.glb
+Model ters yöne bakıyorsa adın sonuna _ters ekle: bmw_m3_ters.glb
+Başka isimli dosyalar garaja "Özel: <isim>" olarak eklenir.

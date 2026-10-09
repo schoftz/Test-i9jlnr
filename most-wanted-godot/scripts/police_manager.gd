@@ -31,25 +31,29 @@ func cooldown_needed() -> float:
 
 
 func spawn_patrol() -> void:
-	_spawn_unit("patrol", main._spawn_node(true))
+	_spawn_unit("patrol", main.world.random_node_between(main.player.global_position, 120.0, 400.0))
 
 
 func _spawn_unit(mode: String, n: int) -> AICar:
 	var nb: Array = main.city.neighbors[n]
 	var to: int = nb[randi() % nb.size()]
 	var car := AICar.new()
-	var c := Game.get_car_config("kas" if heat_level() < 4 else "gt")
-	c["power"] = c["power"] * (0.9 + heat_level() * 0.08)
+	var c: Dictionary = Game.POLICE_CAR.duplicate()
+	c["power"] = float(c["hp"]) * 24.0 * (1.0 + heat_level() * 0.1)
+	c["top"] = 230.0 + heat_level() * 15.0
+	var pm := Game.model_path_for("police_cvpi")
+	if pm != "":
+		c["model"] = pm
 	car.setup(c, "police")
 	car.init_on_graph(main.city, n, to)
 	car.target_speed = 55.0
 	car.mode = mode
-	car.mass = 1600.0
 	main.add_child(car)
 	var a: Vector3 = main.city.nodes[n]
 	var b: Vector3 = main.city.nodes[to]
 	var dir := (b - a).normalized()
-	car.place(a + dir * 15.0 + dir.cross(Vector3.UP) * City.LANE, atan2(dir.x, dir.z))
+	var fd := Vector3(dir.x, 0, dir.z).normalized()
+	car.place(a + dir * 12.0 + fd.cross(Vector3.UP) * float(World.LANES[main.world.edge_kind(n, to)][0]), atan2(dir.x, dir.z))
 	car.add_to_group("police")
 	if mode == "chase":
 		car.target = main.player
@@ -180,7 +184,7 @@ func _maintain_units(delta: float) -> void:
 			chasing += 1
 	if chasing < want and spawn_timer <= 0.0:
 		spawn_timer = 4.0
-		_spawn_unit("chase", main._spawn_node(false))
+		_spawn_unit("chase", main.world.random_node_between(main.player.global_position, 150.0, 330.0))
 
 
 func _maintain_patrols() -> void:
@@ -206,12 +210,17 @@ func _spawn_roadblock() -> void:
 		return
 	# barikatı oyuncunun geleceği yönde, kavşaktan önce kur
 	var to_player := (p.global_position - np)
-	var axis := Vector3(signf(to_player.x), 0, 0) if absf(to_player.x) > absf(to_player.z) else Vector3(0, 0, signf(to_player.z))
-	var center := np + axis * 22.0
+	to_player.y = 0
+	var axis := to_player.normalized()
+	var center := np + axis * 20.0
 	var across := axis.cross(Vector3.UP)
-	for k in 3:
+	var count := 3
+	for m in main.world.neighbors[n]:
+		if main.world.edge_kind(n, m) == "hw":
+			count = 5
+	for k in count:
 		var car := _spawn_unit("roadblock", n)
-		car.place(center + across * (k - 1) * 4.6, atan2(across.x, across.z))
+		car.place(center + across * (k - (count - 1) * 0.5) * 4.8, atan2(across.x, across.z))
 		car.set_siren(true)
 		car.set_meta("ttl", 45.0)
 	Game.toast("İLERİDE BARİKAT!", Color(1, 0.5, 0.1))
@@ -244,8 +253,8 @@ func _end_pursuit() -> void:
 			u.mode = "patrol"
 			u.target = null
 			u.set_siren(false)
-			var n: int = main.city.nearest_node(u.global_position)
-			u.init_on_graph(main.city, n, main.city.pick_next(-1, n))
+			var n: int = main.world.nearest_node(u.global_position)
+			u.init_on_graph(main.world, n, main.world.pick_next(-1, n))
 
 
 func _escaped() -> void:

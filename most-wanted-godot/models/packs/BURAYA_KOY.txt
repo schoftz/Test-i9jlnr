@@ -1,0 +1,2 @@
+Çok araçlı paket dosyalarını (tek .glb/.gltf içinde birçok araç) buraya koy.
+Her üst düzey araç düğümü garajda ayrı bir araç olur ve trafikte de kullanılabilir.

@@ -1,71 +1,106 @@
-# Most Wanted — Godot 4 Sokak Yarışı
+# Most Wanted — Godot 4 Açık Dünya Sokak Yarışı (v2)
 
-Need for Speed: Most Wanted tarzında, tamamen **prosedürel** (hiçbir dış model, doku veya ses dosyası olmadan) üretilen açık dünya sokak yarışı oyunu. Godot 4.3+ ve GDScript ile yazıldı, Forward+ renderer kullanır.
+Need for Speed: Most Wanted tarzında, kodla üretilen küçük bir **ülke** haritasında geçen sokak yarışı oyunu. Godot 4.3 ve üzeri (4.7.2 ile test edildi), GDScript, Forward+ renderer.
 
 ## Mac'e Godot Kurulumu
 
-1. https://godotengine.org/download/macos/ adresine git.
-2. **Godot Engine** (standart sürüm, .NET olmayan) 4.3 veya daha yeni sürümü indir.
-3. İnen `.zip` dosyasını aç, çıkan `Godot.app` dosyasını **Uygulamalar (Applications)** klasörüne sürükle.
-4. İlk açılışta macOS "geliştirici doğrulanamadı" derse: Uygulamalar klasöründe `Godot.app`'e **sağ tıkla → Aç** de ya da *Sistem Ayarları → Gizlilik ve Güvenlik* bölümünden "Yine de Aç"a bas.
+1. https://godotengine.org/download/macos/ adresinden **Godot Engine** (standart sürüm, .NET olmayan) 4.3 veya daha yenisini indir.
+2. `.zip` dosyasını aç, `Godot.app` dosyasını **Uygulamalar (Applications)** klasörüne sürükle.
+3. İlk açılışta "geliştirici doğrulanamadı" uyarısı çıkarsa: `Godot.app` → sağ tık → **Aç** (veya *Sistem Ayarları → Gizlilik ve Güvenlik → Yine de Aç*).
 
-## Projeyi Açma ve Çalıştırma
+## Projeyi Açma
 
-1. Godot'yu aç. Proje Yöneticisi'nde **İçe Aktar (Import)** düğmesine tıkla.
-2. `most-wanted-godot` klasöründeki `project.godot` dosyasını seç, **İçe Aktar ve Düzenle**.
-3. Editör açılınca **F5** (Mac'te `Cmd+B` de olur) ya da sağ üstteki ▶ düğmesine bas.
-
-İlk açılışta Godot kısa bir içe aktarma yapar; şehir oyun başlarken kodla üretildiği için yükleme birkaç saniye sürebilir.
+1. Godot'yu aç → Proje Yöneticisi → **İçe Aktar (Import)** → `most-wanted-godot/project.godot` → **İçe Aktar ve Düzenle**.
+2. **F5** (veya sağ üstteki ▶) ile başlat.
 
 ## Kontroller
 
 | Tuş | İşlev |
 |---|---|
 | W / ↑ | Gaz |
-| S / ↓ | Fren / Geri vites |
+| S / ↓ | Fren / geri vites |
 | A D / ← → | Direksiyon |
 | Boşluk | El freni (drift) |
 | Shift | Nitro |
-| C | Kamera değiştir (takip / tampon / uzak) |
-| E | Garaja gir (sarı halkanın içindeyken) |
-| J | Yarışlar ve işler menüsü |
-| R | Aracı düzelt (takla atarsan) |
-| Esc | Duraklat menüsü |
+| C | Kamera (takip / tampon / uzak) |
+| E | Garaj (Merkez'deki sarı halkada) |
+| J | Yarışlar ve işler |
+| M / Tab | Büyük harita (fare tekeri / + - ile yakınlaştır, sürükleyerek kaydır) |
+| F | FPS göstergesi |
+| R | Aracı en yakın yola geri koy |
+| Esc | Duraklat menüsü (grafik kalitesi, gün döngüsü, emeği geçenler) |
+
+## Harita
+
+- **Merkez**: gökdelenli şehir merkezi (garaj burada).
+- **Sahilkent**: deniz kenarında alçak, renkli evli kasaba; kumsal boyunca **Sahil Yolu**.
+- **Dağköy**: tepelerin arasında köy.
+- **O-1 otoyolu**: Merkez ↔ Sahilkent, nehrin üzerinden kuleli **asma köprü**.
+- **O-2 otoyolu**: Merkez ↔ Dağköy, dağın içinden geçen ışıklı **tünel**.
+- **O-3 otoyolu**: Dağköy ↔ Sahilkent, **kemer köprü**.
+- Otoyollar 2x3 şeritli, ortası bariyerli, kenarları korkuluklu ve aydınlatma direkli. Uçlarında yön tabelaları var. Her şehre **dönel kavşak** bağlantısıyla girilip çıkılır.
+- **Eski yol**: Merkez'den Dağköy'e kırsal iki şeritli yol. Arada tepeler, tarlalar ve ağaçlar var.
+- Oyun gündüz başlar. Gece kısa sürer (4 kat hızlı geçer). Duraklat menüsünden gün döngüsü kapatılırsa hep gündüz olur.
+
+## Araçlar
+
+| Garajdaki araç | Model dosyası adı (`models/custom/` içine) |
+|---|---|
+| Volkswagen Golf GTI Mk5 (başlangıç aracı) | `golf_gti.glb` |
+| Mitsubishi Lancer Evolution IX | `evo_ix.glb` |
+| Nissan Skyline GT-R R34 | `skyline_r34.glb` |
+| BMW M3 GTR (E46) | `bmw_m3.glb` |
+| Porsche 911 GT3 (997) | `porsche_911.glb` |
+| Mercedes-AMG GT | `amg_gt.glb` |
+| Audi R8 V10 | `audi_r8.glb` |
+| Lamborghini Gallardo | `gallardo.glb` |
+| Polis Ford Crown Victoria (polis araçları) | `police_cvpi.glb` |
+
+Model dosyası yoksa her araç, kendi silüetine göre (hatchback / sedan / coupe / 911 / uzun kaput / süper spor / kama) kodla üretilmiş yumuşak hatlı bir gövdeyle gelir. Bu gövdelerde çamurluk boşlukları, far/stop şekilleri ve kanat bulunur. **Gerçek görünüm için kendi GLB modelini eklemelisin:**
+
+### Sketchfab'dan ücretsiz model ekleme (adım adım)
+
+1. https://sketchfab.com adresine git ve ücretsiz üye ol.
+2. Aracı ara (ör. "Nissan Skyline R34"). Arama sonuçlarında **Downloadable** filtresini aç. Lisansın *CC Attribution* veya *CC0* olduğuna bak.
+3. Modelin sayfasında **Download 3D Model** → **glTF** (veya **GLB**) formatını indir.
+4. **.glb** indirdiysen dosyanın adını tablodaki ada çevir (ör. `skyline_r34.glb`).
+   **.gltf** (zip) indirdiysen zip'i aç, `scene.gltf` dosyasını `skyline_r34.gltf` yap. `scene.bin` ve `textures` klasörünü de aynı klasörde bırak.
+5. Dosyayı `most-wanted-godot/models/custom/` klasörüne koy.
+6. Godot'yu kapatıp projeyi yeniden aç (veya editörde dosyaların içe aktarılmasını bekle), sonra F5.
+
+Notlar:
+- Model otomatik olarak ölçeklenir (araç boyuna göre), ortalanır ve yere oturtulur.
+- İsminde *wheel / tire / rim / tekerlek* geçen parçalar gizlenir; yerlerine dönen tekerlekler konur. Böyle parçalar yoksa modelin kendi tekerlekleri kalır.
+- Model ters yöne bakıyorsa dosya adının sonuna `_ters` ekle: `bmw_m3_ters.glb`.
+- Malzeme adında *paint/body* geçen modellerde garajdaki boya seçimi çalışır.
+- `models/custom/` içine tablodakilerden farklı isimle bir model koyarsan (ör. `supra.glb`), garajda **"Özel: Supra"** olarak yeni bir araç çıkar.
+
+### Araç paketleri (tek dosyada birçok araç)
+
+Sketchfab'daki "car pack" modellerini (ör. *Low Poly 22 Sedan Pack*) `models/packs/` klasörüne koy (ör. `models/packs/sedan_pack.glb`). Paketteki her araç garajda ayrı bir araç olarak görünür (adı model içindeki düğüm adından gelir). Bu araçlar trafikte ve rakiplerde de kullanılır.
+
+### Lisans / atıf
+
+CC-BY modeller kullanırsan `models/CREDITS.txt` dosyasına model adını, yazarını ve linkini yaz. Bu metin oyunda **Duraklat → Emeği Geçenler** ekranında görünür. Oyunun kendisinde hazır gelen dış model yoktur; her şey kodla üretilir.
 
 ## Özellikler
 
-- **Şehir:** 8x8 kavşaklı sokak ızgarası, kaldırımlar, farklı yükseklikte binalar (geceleri ışıklı pencereler), sokak lambaları, ağaçlar, parklar, şehri çevreleyen geniş **otoban halkası**, bariyerler ve şehir dışı tepeler.
-- **Grafik:** WorldEnvironment ile glow/bloom, SSAO, SSR, ACES tonemapping, sis; güneşin döndüğü gece/gündüz döngüsü (8 dakikada bir gün) ve gölgeler. Oyun gece başlar.
-- **Araç fiziği:** VehicleBody3D + VehicleWheel3D, arcade ayarlı; el freniyle drift, hıza duyarlı direksiyon, nitro (FOV artışı, kamera sarsıntısı, mavi alev parçacıkları). Drift ve yüksek hız nitroyu doldurur.
-- **Araçlar:** 7 araç (Kompakt GT'den Efsane Carrera GT'ye), fiyat ve istatistiklerle. Garajda satın alma, %60'a satma, seçme, boya ve motor / nitro / yol tutuş yükseltmeleri (3'er seviye).
-- **Kayıt:** Para, araçlar ve istatistikler `user://most_wanted_save.json` dosyasına otomatik kaydedilir (Mac'te `~/Library/Application Support/Godot/app_userdata/Most Wanted - Sokak Yarışı/`). Sıfırdan başlamak için bu dosyayı sil.
-- **Trafik:** Sağ şeritte giden, kavşaklarda dönen, öndeki araca göre fren yapan yapay zeka araçları.
-- **Polis:** Polis yakınında 110 km/s üstü hız veya polise çarpmak takibi başlatır. 1–5 yıldız aranma seviyesi, yanıp sönen kırmızı/mavi tepe lambaları ve siren. Polisler önünü kesip çarpmaya çalışır; seviye yükseldikçe birim sayısı artar, 3+ yıldızda **barikat** kurulur. Etrafın sarılı ve yavaşken ~3 sn = **YAKALANDIN** (ceza). Görüş dışına çıkınca soğuma sayacı başlar; dolarsa **KAÇTIN** ve ödül parası.
-- **Yarışlar (J):** 2 sprint + 3 devre yarışı, 3 yapay zeka rakip, geri sayım, sıra, tur, süre ve para ödülü (1.: tam, 2.: %40, 3.: %15).
-- **İşler:** Zamana karşı teslimat görevleri.
-- **HUD:** Hız göstergesi, nitro çubuğu, para, aranma yıldızları, takip/soğuma çubuğu, dönen mini harita (polis, trafik, rakipler, garaj ve hedef), bildirimler.
-- **Ses:** AudioStreamGenerator ile gerçek zamanlı üretilen motor sesi (vites simülasyonlu) ve polis sireni.
+- **Fizik:** VehicleBody3D + VehicleWheel3D, arcade ayarlı. El freniyle drift, hıza duyarlı direksiyon, araca göre önden/arkadan/dört çeker. Nitro FOV artışı, sarsıntı ve alev efekti yapar; drift ve yüksek hız nitroyu doldurur.
+- **Garaj:** Araç satın alma, %60 fiyatına satma, seçme, 10 boya rengi, motor / nitro / yol tutuş yükseltmeleri (3'er seviye). Kayıt dosyası `user://most_wanted_save.json`.
+- **Trafik:** Şehirde ve otoyolda (3 şerit) şeridini koruyan, kavşaklarda dönen, öndeki araca göre yavaşlayan araçlar.
+- **Polis:** 1–5 yıldız aranma seviyesi, siren ve tepe lambaları. Polisler önünü kesip çarpar, 3+ yıldızda barikat kurar (otoyolda 5 araçlık). Yakalanırsan ceza ödersin; görüşten çıkıp soğuma süresini doldurursan ödül alırsın.
+- **Yarışlar (J):** Merkez sprint/devre, Asma Köprü sprinti, Tünel sprinti, Eski Yol sprinti, Sahil Yolu sprinti ve tüm otoyollardan geçen **Ülke Turu**. 3 rakip, geri sayım, sıralama, para ödülü. Ayrıca zamana karşı **teslimat işleri** var.
+- **HUD:** Hız, nitro, para, yıldızlar, takip/soğuma çubuğu, dönen mini harita, büyük harita (M/Tab), FPS (F).
 
-## Dosya Yapısı
+## Performans (MacBook / Retina)
 
-```
-project.godot          Proje ayarları + giriş haritası
-icon.svg               Simge
-scenes/main.tscn       Ana sahne (her şey koddan kurulur)
-scripts/game_data.gd   Global veri (autoload "Game"): araç kataloğu, para, kayıt
-scripts/main.gd        Ortam, gece/gündüz, kamera, trafik yönetimi
-scripts/city.gd        Prosedürel şehir + yol grafiği
-scripts/car_base.gd    Ortak araç fiziği ve prosedürel araç modeli
-scripts/player_car.gd  Oyuncu kontrolü, nitro
-scripts/ai_car.gd      Trafik / polis / yarışçı yapay zekası
-scripts/police_manager.gd  Aranma seviyesi, takip, barikat
-scripts/race_manager.gd    Yarışlar ve teslimat işleri
-scripts/hud.gd         Arayüz, mini harita, garaj/duraklat/yarış menüleri
-scripts/engine_audio.gd    Prosedürel motor sesi ve siren
-```
+- Duraklat menüsünde **Grafik: Düşük / Orta / Yüksek** seçenekleri var (varsayılan: Orta).
+- Retina ekranlarda 3B çözünürlük otomatik düşürülür ve FSR ile ölçeklenir. Gölgeler kısa mesafeli tutulur, SSR kapalı, SSAO yalnızca Yüksek'te açık. Kenar yumuşatma FXAA ile yapılır, VSync açık.
+- Ağaçlar, lambalar, köprü kabloları ve direkler parçalara (chunk) bölünmüş MultiMesh olarak çizilir ve uzaklık sınırları vardır. Uzaktaki trafik araçlarında fizik kapatılır, araçlar yalnızca yol boyunca kaydırılır.
+- Hâlâ yavaşsa **Düşük** kaliteyi seç. FPS'i F tuşuyla görebilirsin.
 
 ## Bilinen Sınırlamalar
 
-- Araç ve binalar basit kutu şekillerinden oluşur (dış model kullanılmadığı için).
-- Yapay zeka sürücüleri yol grafiğini takip eder; sert çarpışmalardan sonra bazen takılıp geri vitese geçmeleri gerekir.
-- Eski / zayıf Mac'lerde düşük FPS olursa `scripts/main.gd` içinde `env.ssr_enabled` ve `env.ssao_enabled` değerlerini `false` yapabilirsin.
+- Prosedürel araç gövdeleri silüete benzer ama fotogerçekçi değildir. Gerçek görünüm için GLB ekle.
+- Otoyol girişleri ayrı rampalar yerine dönel kavşaklarla yapılır.
+- Yol dışındaki tepelerden geçmek mümkündür ama zor; R tuşu seni yola geri koyar.

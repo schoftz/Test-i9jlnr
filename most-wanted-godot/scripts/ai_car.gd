@@ -2,7 +2,9 @@ class_name AICar
 extends CarBase
 ## Yapay zeka sürücüsü: trafik, polis (devriye / takip / barikat) ve yarışçı modları.
 
-var city: City
+var city: World
+var lane: int = 0
+var far_mode: bool = false
 var mode: String = "traffic"   # traffic, patrol, chase, roadblock, racer, idle
 var prev_node: int = -1
 var cur_node: int = 0          # hedef düğüm
@@ -21,13 +23,48 @@ var skill: float = 1.0
 var rubber: float = 1.0
 
 
-func init_on_graph(c: City, from_n: int, to_n: int) -> void:
+func init_on_graph(c: World, from_n: int, to_n: int) -> void:
 	city = c
 	prev_node = from_n
 	cur_node = to_n
 
 
+func set_far(f: bool) -> void:
+	if f == far_mode:
+		return
+	far_mode = f
+	if f:
+		freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+		freeze = true
+	else:
+		freeze = false
+		linear_velocity = global_basis.z * target_speed / 3.6
+
+
+## Uzaktaki trafik: fizik yerine basit yol takibi (performans)
+func _drive_far(delta: float) -> void:
+	var tp := city.lane_point(prev_node, cur_node, lane)
+	var pos := global_position
+	var to := tp - pos
+	to.y = 0
+	if to.length() < 6.0:
+		var nxt := city.pick_next(prev_node, cur_node)
+		prev_node = cur_node
+		cur_node = nxt
+		return
+	var dir := to.normalized()
+	var step := target_speed / 3.6 * delta
+	pos += dir * step
+	pos.y = lerpf(pos.y, tp.y + 0.05, clampf(delta * 2.0, 0.0, 1.0))
+	global_transform = Transform3D(Basis(Vector3.UP, atan2(dir.x, dir.z)), pos)
+	speed_kmh = target_speed
+
+
 func _physics_process(delta: float) -> void:
+	if far_mode:
+		if city != null and mode in ["traffic", "patrol"]:
+			_drive_far(delta)
+		return
 	match mode:
 		"traffic", "patrol":
 			_drive_traffic(delta)
@@ -79,19 +116,20 @@ func _car_ahead_dist() -> float:
 func _drive_traffic(delta: float) -> void:
 	if city == null:
 		return
-	var tp := city.lane_point(prev_node, cur_node)
+	var tp := city.lane_point(prev_node, cur_node, lane)
 	var flat := Vector3(global_position.x, 0, global_position.z)
-	if flat.distance_to(tp) < 9.0:
+	if flat.distance_to(Vector3(tp.x, 0, tp.z)) < 9.0:
 		var nxt := city.pick_next(prev_node, cur_node)
 		prev_node = cur_node
 		cur_node = nxt
-		tp = city.lane_point(prev_node, cur_node)
+		tp = city.lane_point(prev_node, cur_node, lane)
 	steer_in = steer_toward(tp)
 	var desired := target_speed
 	# kavşağa yaklaşırken yavaşla
-	var dist_node := flat.distance_to(city.nodes[cur_node])
-	if dist_node < 25.0:
-		desired = minf(desired, 28.0)
+	var cn := city.nodes[cur_node]
+	var dist_node := flat.distance_to(Vector3(cn.x, 0, cn.z))
+	if dist_node < 25.0 and city.is_junction(cur_node):
+		desired = minf(desired, 30.0)
 	var ahead := _car_ahead_dist()
 	if ahead < 22.0:
 		desired = minf(desired, (ahead - 7.0) * 3.0)
@@ -160,15 +198,15 @@ func _drive_racer(_delta: float) -> void:
 	steer_in = steer_toward(tp)
 	var nxt: Vector3 = race_points[(race_index + 1) % race_points.size()]
 	var flat := Vector3(global_position.x, 0, global_position.z)
-	var d := flat.distance_to(tp)
+	var d := flat.distance_to(Vector3(tp.x, 0, tp.z))
 	# sonraki köşenin açısına göre fren
-	var in_dir := (tp - flat).normalized()
-	var out_dir := (nxt - tp).normalized()
+	var in_dir := (Vector3(tp.x, 0, tp.z) - flat).normalized()
+	var out_dir := Vector3(nxt.x - tp.x, 0, nxt.z - tp.z).normalized()
 	var corner := 1.0 - clampf(in_dir.dot(out_dir), 0.0, 1.0)
 	var top: float = cfg.get("top", 220.0)
 	var desired: float = top * skill * rubber
-	if d < 60.0 and corner > 0.3:
-		desired = minf(desired, lerpf(desired, 75.0, corner))
+	if d < 70.0 and corner > 0.15:
+		desired = minf(desired, lerpf(desired, 70.0, clampf(corner * 1.4, 0.0, 1.0)))
 	var ahead := _car_ahead_dist()
 	if ahead < 10.0:
 		steer_in = clampf(steer_in + 0.4, -1.0, 1.0)

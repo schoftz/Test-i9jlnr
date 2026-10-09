@@ -3,13 +3,23 @@ extends Node
 ## Sprint / devre yarışları (3 yapay zeka rakip) ve teslimat işleri.
 
 const RACES := [
-	{"name": "Merkez Sprinti", "type": "sprint", "path": [[1, 1], [1, 4], [3, 4], [3, 6], [6, 6], [6, 2]], "laps": 1, "prize": 3000},
-	{"name": "Liman Devresi", "type": "circuit", "path": [[2, 2], [5, 2], [5, 5], [2, 5]], "laps": 3, "prize": 4500},
-	{"name": "Otoban Turu", "type": "circuit", "path": [[0, 0], [7, 0], [7, 7], [0, 7]], "laps": 2, "prize": 7000},
-	{"name": "Gece Sprinti", "type": "sprint", "path": [[0, 7], [0, 1], [4, 1], [4, 4], [7, 4], [7, 0]], "laps": 1, "prize": 6000},
-	{"name": "Zikzak Devresi", "type": "circuit", "path": [[1, 1], [3, 1], [3, 3], [5, 3], [5, 6], [1, 6]], "laps": 2, "prize": 9000},
+	{"name": "Merkez Sprinti", "type": "sprint", "laps": 1, "prize": 3000,
+		"wp": [Vector3(-180, 0, -180), Vector3(-180, 0, 180), Vector3(0, 0, 180), Vector3(0, 0, -180), Vector3(180, 0, -180), Vector3(180, 0, 180)]},
+	{"name": "Merkez Devresi", "type": "circuit", "laps": 2, "prize": 4500,
+		"wp": [Vector3(-90, 0, -90), Vector3(90, 0, -90), Vector3(90, 0, 90), Vector3(-90, 0, 90)]},
+	{"name": "Asma Köprü Sprinti (O-1)", "type": "sprint", "laps": 1, "prize": 7000,
+		"wp": [Vector3(0, 0, 0), Vector3(430, 0, 0), Vector3(1000, 14, 250), Vector3(1520, 0, 300), Vector3(1840, 0, 300)]},
+	{"name": "Tünel Sprinti (O-2)", "type": "sprint", "laps": 1, "prize": 7000,
+		"wp": [Vector3(0, 0, 90), Vector3(0, 0, -450), Vector3(100, 0, -920), Vector3(-300, 0, -1400), Vector3(-300, 0, -1650)]},
+	{"name": "Eski Yol Sprinti", "type": "sprint", "laps": 1, "prize": 6000,
+		"wp": [Vector3(-300, 0, -1580), Vector3(-1060, 0, -600), Vector3(-560, 0, 60), Vector3(-180, 0, 0), Vector3(90, 0, 0)]},
+	{"name": "Sahil Yolu Sprinti", "type": "sprint", "laps": 1, "prize": 4000,
+		"wp": [Vector3(1680, 0, 380), Vector3(1920, 0, 300), Vector3(2290, 0, 300), Vector3(2300, 0, 1500)]},
+	{"name": "Ülke Turu (tüm otoyollar)", "type": "circuit", "laps": 1, "prize": 16000,
+		"wp": [Vector3(430, 0, 0), Vector3(1000, 14, 250), Vector3(1520, 0, 300), Vector3(1760, 0, 220), Vector3(1760, 0, -150),
+			Vector3(1000, 10, -1200), Vector3(-300, 0, -1400), Vector3(100, 0, -920), Vector3(0, 0, -450), Vector3(0, 0, -180), Vector3(180, 0, 0)]},
 ]
-const RACER_CARS := ["sokak", "kas", "turbo", "gt", "egzotik"]
+const RACER_CARS := ["evo_ix", "skyline_r34", "bmw_m3", "porsche_911", "amg_gt", "audi_r8", "gallardo"]
 const RACER_NAMES := ["Razor", "Bull", "Izzy", "Ronnie", "Kaze", "Webster"]
 
 var main
@@ -17,6 +27,7 @@ var active: bool = false
 var kind: String = ""              # race / delivery
 var race_def: Dictionary = {}
 var seq: Array[Vector3] = []
+var seq_center: Array[Vector3] = []
 var player_index: int = 0
 var racers: Array[AICar] = []
 var racer_names: Array[String] = []
@@ -38,8 +49,8 @@ var delivery_name: String = ""
 func _ready() -> void:
 	marker = MeshInstance3D.new()
 	var cm := CylinderMesh.new()
-	cm.top_radius = 8.0
-	cm.bottom_radius = 8.0
+	cm.top_radius = 11.0
+	cm.bottom_radius = 11.0
 	cm.height = 40.0
 	cm.cap_top = false
 	cm.cap_bottom = false
@@ -55,10 +66,6 @@ func _ready() -> void:
 	add_child(marker)
 
 
-func _node(p: Array) -> Vector3:
-	return main.city.node_pos(p[0], p[1])
-
-
 func start_race(index: int) -> void:
 	if active:
 		cancel()
@@ -66,37 +73,30 @@ func start_race(index: int) -> void:
 	kind = "race"
 	main.police.clear_all()
 	main.police.enabled = false
-	var pts: Array[Vector3] = []
-	var path: Array = race_def["path"]
-	# ardışık noktalar arasındaki ara kavşakları da kontrol noktası yap
-	for k in path.size():
-		var a: Array = path[k]
-		var b: Array
-		if k + 1 < path.size():
-			b = path[k + 1]
-		elif race_def["type"] == "circuit":
-			b = path[0]
-		else:
-			pts.append(_node(a))
-			break
-		var steps: int = maxi(absi(b[0] - a[0]), absi(b[1] - a[1]))
-		for s in steps:
-			var i: int = a[0] + signi(b[0] - a[0]) * s
-			var j: int = a[1] + signi(b[1] - a[1]) * s
-			pts.append(main.city.node_pos(i, j))
+	var w = main.world
+	var wps: Array = race_def["wp"]
+	var wn: Array[int] = []
+	for p in wps:
+		wn.append(w.nearest_node(p))
+	if race_def["type"] == "circuit":
+		wn.append(wn[0])
+	var path: Array[int] = [wn[0]]
+	for k in range(1, wn.size()):
+		var sub: Array[int] = w.find_path(wn[k - 1], wn[k])
+		for q in range(1, sub.size()):
+			path.append(sub[q])
 	seq.clear()
+	seq_center.clear()
 	var laps: int = race_def["laps"]
-	if race_def["type"] == "sprint":
-		for k in range(1, pts.size()):
-			seq.append(pts[k])
-	else:
-		for l in laps:
-			for k in range(1, pts.size()):
-				seq.append(pts[k])
-			seq.append(pts[0])
+	for l in laps:
+		for k in range(1, path.size()):
+			var ln := 1 if w.edge_kind(path[k - 1], path[k]) == "hw" else 0
+			seq.append(w.lane_point(path[k - 1], path[k], ln))
+			seq_center.append(w.nodes[path[k]])
+	var pts: Array[Vector3] = [w.nodes[path[0]], w.nodes[path[1]]]
 	# grid
-	var start := pts[0]
 	var dir := (pts[1] - pts[0]).normalized()
+	var start := pts[0] + dir * 3.0
 	var right := dir.cross(Vector3.UP)
 	var yaw := atan2(dir.x, dir.z)
 	var p: PlayerCar = main.player
@@ -109,7 +109,9 @@ func start_race(index: int) -> void:
 	names.shuffle()
 	for r in 3:
 		var car := AICar.new()
-		var c := Game.get_car_config(RACER_CARS[(index + r) % RACER_CARS.size()])
+		var pool: Array = RACER_CARS.duplicate()
+		pool.append_array(Game.pack_cars)
+		var c := Game.get_car_config(pool[(index + r * 3) % pool.size()])
 		c["color"] = Color.from_hsv(randf(), 0.8, 0.9)
 		car.setup(c, "racer")
 		main.add_child(car)
@@ -137,12 +139,8 @@ func start_delivery() -> void:
 		cancel()
 	kind = "delivery"
 	var pp: Vector3 = main.player.global_position
-	var n := 0
-	for tries in 50:
-		n = randi() % main.city.nodes.size()
-		if main.city.nodes[n].distance_to(pp) > 250.0:
-			break
-	delivery_target = main.city.nodes[n]
+	var n: int = main.world.random_node_between(pp, 600.0, 2200.0)
+	delivery_target = main.world.nodes[n]
 	var dist := delivery_target.distance_to(pp)
 	delivery_time = dist / 14.0 + 15.0
 	delivery_reward = int(dist * 4.0) + 500
@@ -163,7 +161,6 @@ func cancel() -> void:
 	_clear_racers()
 	main.player.controls_enabled = true
 	main.police.enabled = true
-	main.hud.big_message("", Color.WHITE)
 
 
 func _clear_racers() -> void:
@@ -176,7 +173,7 @@ func _clear_racers() -> void:
 func _update_marker() -> void:
 	if player_index < seq.size():
 		marker.visible = true
-		marker.global_position = seq[player_index] + Vector3(0, 20, 0)
+		marker.global_position = seq_center[player_index] + Vector3(0, 20, 0)
 		var last := player_index == seq.size() - 1
 		marker_mat.albedo_color = Color(0.2, 1.0, 0.3, 0.3) if last else Color(1.0, 0.75, 0.1, 0.25)
 	else:
@@ -207,9 +204,12 @@ func _process(delta: float) -> void:
 	var cars: Array = main.all_vehicles()
 	# oyuncu kontrol noktası
 	if not player_finished and player_index < seq.size():
-		var flat := Vector3(p.global_position.x, 0, p.global_position.z)
-		if flat.distance_to(seq[player_index]) < 14.0:
-			player_index += 1
+		var hit := -1
+		for q in range(player_index, mini(player_index + 4, seq.size())):
+			if p.global_position.distance_to(seq_center[q]) < 18.0 or p.global_position.distance_to(seq[q]) < 12.0:
+				hit = q
+		if hit >= 0:
+			player_index = hit + 1
 			if player_index >= seq.size():
 				player_finished = true
 				finish_order.append("SEN")
@@ -225,9 +225,12 @@ func _process(delta: float) -> void:
 		r.all_cars = cars
 		if r.race_finished:
 			continue
-		var flat_r := Vector3(r.global_position.x, 0, r.global_position.z)
-		if flat_r.distance_to(seq[r.race_index]) < 14.0:
-			r.race_index += 1
+		var rh := -1
+		for q in range(r.race_index, mini(r.race_index + 3, seq.size())):
+			if r.global_position.distance_to(seq[q]) < 12.0:
+				rh = q
+		if rh >= 0:
+			r.race_index = rh + 1
 			if r.race_index >= seq.size():
 				r.race_finished = true
 				finish_order.append(racer_names[k])
@@ -235,6 +238,7 @@ func _process(delta: float) -> void:
 		var rp := progress_of(r.race_index, r.global_position)
 		var diff := rp - ppos   # pozitif = rakip önde
 		r.rubber = clampf(1.0 - diff / 3000.0, 0.85, 1.18)
+		r.set_far(false)
 		# yarış yolundan çok uzaklaştıysa geri koy
 		if r.global_position.y < -10.0:
 			r.place(seq[maxi(r.race_index - 1, 0)], r.global_rotation.y)
@@ -247,7 +251,7 @@ func _process(delta: float) -> void:
 func progress_of(index: int, pos: Vector3) -> float:
 	if index >= seq.size():
 		return index * 1000.0 + 999.0
-	var d := Vector3(pos.x, 0, pos.z).distance_to(seq[index])
+	var d := pos.distance_to(seq[index])
 	return index * 1000.0 - d
 
 
@@ -283,8 +287,7 @@ func _on_player_finish() -> void:
 func _process_delivery(delta: float) -> void:
 	delivery_time -= delta
 	var p: PlayerCar = main.player
-	var flat := Vector3(p.global_position.x, 0, p.global_position.z)
-	if flat.distance_to(delivery_target) < 14.0:
+	if p.global_position.distance_to(delivery_target) < 16.0:
 		Game.add_money(delivery_reward)
 		Game.toast("Teslimat tamam! +$%d" % delivery_reward, Color(0.3, 1, 0.4))
 		main.hud.big_message("TESLİM EDİLDİ", Color(0.3, 1, 0.4), 2.0)
@@ -321,5 +324,5 @@ func current_target() -> Variant:
 	if kind == "delivery":
 		return delivery_target
 	if player_index < seq.size():
-		return seq[player_index]
+		return seq_center[player_index]
 	return null

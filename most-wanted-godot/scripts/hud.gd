@@ -15,6 +15,8 @@ var toast_box: VBoxContainer
 var big_label: Label
 var big_timer: float = 0.0
 var minimap: Minimap
+var full_map: Minimap
+var fps_label: Label
 var help_label: Label
 var garage_hint: Label
 var menu_root: Control
@@ -98,7 +100,7 @@ func _ready() -> void:
 	minimap.offset_left = 20; minimap.offset_top = -280; minimap.offset_right = 280; minimap.offset_bottom = -20
 	root.add_child(minimap)
 
-	help_label = _label(root, "WASD/Oklar: Sür   Boşluk: El freni   Shift: Nitro   C: Kamera   E: Garaj   J: Yarış/İş   R: Düzelt   Esc: Duraklat", 14, Color(1, 1, 1, 0.6))
+	help_label = _label(root, "WASD/Oklar: Sür   Boşluk: El freni   Shift: Nitro   C: Kamera   E: Garaj   J: Yarış/İş   R: Yola dön   M/Tab: Harita   F: FPS   Esc: Duraklat", 14, Color(1, 1, 1, 0.6))
 	help_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	help_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	help_label.offset_top = -24; help_label.offset_bottom = -4
@@ -106,6 +108,18 @@ func _ready() -> void:
 	garage_hint.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	garage_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	garage_hint.offset_left = -200; garage_hint.offset_right = 200; garage_hint.offset_top = -140; garage_hint.offset_bottom = -100
+
+	full_map = Minimap.new()
+	full_map.hud = self
+	full_map.mode = "full"
+	full_map.scale_m = 0.18
+	full_map.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	full_map.offset_left = 60; full_map.offset_top = 60; full_map.offset_right = -60; full_map.offset_bottom = -60
+	full_map.visible = false
+	root.add_child(full_map)
+	fps_label = _label(root, "", 18, Color(0.6, 1, 0.6))
+	fps_label.position = Vector2(24, 200)
+	fps_label.visible = false
 
 	menu_root = Control.new()
 	menu_root.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -169,7 +183,12 @@ func _process(delta: float) -> void:
 		big_timer -= delta
 		if big_timer <= 0.0:
 			big_label.text = ""
-	minimap.queue_redraw()
+	if minimap.visible:
+		minimap.queue_redraw()
+	if full_map.visible:
+		full_map.queue_redraw()
+	if fps_label.visible:
+		fps_label.text = "FPS: %d  (%s)" % [Engine.get_frames_per_second(), main.QUALITY_NAMES[Game.quality]]
 
 
 static func _fmt_money(v: int) -> String:
@@ -288,9 +307,41 @@ func _text(parent: Control, text: String, size: int = 18, color: Color = Color.W
 func _unhandled_input(event: InputEvent) -> void:
 	if menu_kind == "":
 		return
+	if menu_kind == "credits" and event.is_action_pressed("pause"):
+		close_menu()
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("pause") or (menu_kind == "jobs" and event.is_action_pressed("menu_jobs")) or (menu_kind == "garage" and event.is_action_pressed("garage")):
 		close_menu()
 		get_viewport().set_input_as_handled()
+
+
+func toggle_map() -> void:
+	full_map.visible = not full_map.visible
+	minimap.visible = not full_map.visible
+	if full_map.visible and main.player:
+		full_map.full_center = Vector2(main.player.global_position.x, main.player.global_position.z)
+
+
+func toggle_fps() -> void:
+	fps_label.visible = not fps_label.visible
+
+
+func _input(event: InputEvent) -> void:
+	if not full_map.visible:
+		return
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			full_map.scale_m = minf(full_map.scale_m * 1.2, 2.0)
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			full_map.scale_m = maxf(full_map.scale_m / 1.2, 0.05)
+	elif event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT):
+		full_map.full_center -= event.relative / full_map.scale_m
+	elif event is InputEventKey and event.pressed:
+		if event.keycode == KEY_EQUAL or event.keycode == KEY_KP_ADD or event.keycode == KEY_PLUS:
+			full_map.scale_m = minf(full_map.scale_m * 1.2, 2.0)
+		elif event.keycode == KEY_MINUS or event.keycode == KEY_KP_SUBTRACT:
+			full_map.scale_m = maxf(full_map.scale_m / 1.2, 0.05)
 
 
 func toggle_pause() -> void:
@@ -309,7 +360,39 @@ func toggle_pause() -> void:
 			Game.toast("Takip/yarış sırasında olmaz!", Color(1, 0.3, 0.3))
 		else:
 			main.respawn_at_garage())
+	var qrow := HBoxContainer.new()
+	vb.add_child(qrow)
+	_text(qrow, "Grafik: ", 18)
+	for qi in 3:
+		var qb := _button(qrow, main.QUALITY_NAMES[qi], func(): main.apply_quality(qi); toggle_pause(); toggle_pause())
+		if qi == Game.quality:
+			qb.add_theme_color_override("font_color", Color(1, 0.8, 0.2))
+	_button(vb, "Gün döngüsü: %s" % ("Açık" if Game.day_cycle else "Kapalı (hep gündüz)"), func():
+		Game.day_cycle = not Game.day_cycle
+		if not Game.day_cycle:
+			main.time_of_day = 11.0
+		Game.save_game()
+		toggle_pause(); toggle_pause())
+	_button(vb, "Emeği Geçenler / Lisanslar", show_credits)
 	_button(vb, "Kaydet ve Çık", func(): Game.save_game(); get_tree().quit())
+
+
+func show_credits() -> void:
+	var vb := _open_menu("credits")
+	_title(vb, "EMEĞİ GEÇENLER")
+	var t := "Oyun kodu, şehir, araç gövdeleri, dokular ve sesler: prosedürel (bu projede üretildi).\n"
+	t += "Motor: Godot Engine (MIT lisansı) — godotengine.org\n\n"
+	var f := FileAccess.open("res://models/CREDITS.txt", FileAccess.READ)
+	if f:
+		t += f.get_as_text()
+	else:
+		t += "Ek model yok."
+	var rt := RichTextLabel.new()
+	rt.text = t
+	rt.custom_minimum_size = Vector2(700, 320)
+	rt.add_theme_font_size_override("normal_font_size", 16)
+	vb.add_child(rt)
+	_button(vb, "Geri", func(): close_menu(); toggle_pause())
 
 
 func open_jobs() -> void:
@@ -344,26 +427,33 @@ func open_garage(view: String = "") -> void:
 	var list := VBoxContainer.new()
 	list.custom_minimum_size = Vector2(330, 0)
 	hb.add_child(list)
-	for id in Game.CARS:
-		var c: Dictionary = Game.CARS[id]
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(360, 460)
+	list.add_child(scroll)
+	var inner := VBoxContainer.new()
+	inner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(inner)
+	for id in Game.all_car_ids():
+		var c: Dictionary = Game.car_info(id)
 		var mark := ""
 		if id == Game.current:
 			mark = "  [SEÇİLİ]"
 		elif Game.owned.has(id):
 			mark = "  [SAHİP]"
-		var b := _button(list, "%s  $%s%s" % [c["name"], _fmt_money(c["price"]), mark], func(): open_garage(id))
+		var b := _button(inner, "%s  $%s%s" % [c["name"], _fmt_money(c["price"]), mark], func(): open_garage(id))
 		if id == garage_view:
 			b.add_theme_color_override("font_color", Color(1, 0.8, 0.2))
 	var det := VBoxContainer.new()
 	det.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hb.add_child(det)
 	var id: String = garage_view
-	var base: Dictionary = Game.CARS[id]
+	var base: Dictionary = Game.car_info(id)
 	var cfg := Game.get_car_config(id)
 	var owned := Game.owned.has(id)
 	_text(det, base["name"], 28, Color(1, 0.85, 0.3))
-	_text(det, "Güç: %d   Azami hız: %d km/s\nYol tutuş: %.2f   Nitro süresi: %.1f sn   Ağırlık: %d kg" % [
-		int(cfg["power"]), int(cfg["top"]), cfg["grip"], cfg["nitro"], int(cfg["mass"])])
+	_text(det, "Güç: %d hp   Azami hız: %d km/s\nYol tutuş: %.2f   Nitro süresi: %.1f sn   Ağırlık: %d kg" % [
+		int(cfg["hp"] * (1.0 + 0.12 * Game.owned.get(id, {}).get("eng", 0))), int(cfg["top"]), cfg["grip"], cfg["nitro"], int(cfg["mass"])])
+	_text(det, "Model: " + ("özel GLB yüklü" if cfg.get("model", "") != "" or cfg.has("pack_file") else "prosedürel (models/custom/%s.glb ekleyebilirsin)" % id), 14, Color(0.7, 0.7, 0.8))
 	var row := HBoxContainer.new()
 	det.add_child(row)
 	if not owned:
@@ -449,57 +539,81 @@ class StarRow extends Control:
 
 
 class Minimap extends Control:
+	## mode "rotate": oyuncu ortada, gidiş yönü yukarı. mode "full": kuzey (-Z) yukarı, tüm ülke.
 	var hud
-	var scale_m := 0.33   # piksel / metre
+	var mode := "rotate"
+	var scale_m := 0.28          # piksel / metre
+	var full_center := Vector2.ZERO
+	const ROAD_COLORS := {"hw": Color(1.0, 0.78, 0.3), "city": Color(0.85, 0.85, 0.9), "rb": Color(0.95, 0.85, 0.6), "road": Color(0.75, 0.75, 0.7)}
+
+	## Dünya (x,z) -> harita pikseli dönüşümü. Test edilebilir saf fonksiyon.
+	static func map_xform(player_xz: Vector2, yaw: float, s: float, center: Vector2, rotate: bool) -> Transform2D:
+		var rot := (yaw + PI) if rotate else 0.0
+		return Transform2D(rot, Vector2(s, s), 0.0, center) * Transform2D(0.0, -player_xz)
+
+	func _ready() -> void:
+		clip_contents = true
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	func _draw() -> void:
 		var main = hud.main
-		if main == null or main.player == null:
+		if main == null or main.player == null or not is_instance_valid(main.player):
 			return
 		var sz := size
 		var center := sz * 0.5
-		draw_rect(Rect2(Vector2.ZERO, sz), Color(0, 0, 0, 0.6))
-		var p: Vector3 = main.player.global_position
-		var yaw: float = main.player.global_rotation.y
-		var city: City = main.city
-		var xf := func(w: Vector3) -> Vector2:
-			var d := Vector2(w.x - p.x, w.z - p.z)
-			# oyuncu yönü yukarı bakacak şekilde döndür
-			d = d.rotated(yaw)
-			return center + Vector2(-d.x, -d.y) * scale_m
-		# yollar
-		for n in city.nodes.size():
-			for m in city.neighbors[n]:
-				if m > n:
-					var w := 5.0 if (City.is_ring(n % City.N) and City.is_ring(m % City.N)) or (City.is_ring(n / City.N) and City.is_ring(m / City.N)) else 3.0
-					draw_line(xf.call(city.nodes[n]), xf.call(city.nodes[m]), Color(0.6, 0.6, 0.65), w)
-		# garaj
-		_marker(xf.call(main.garage_pos), Color(1, 0.8, 0.2), "G")
-		# hedef
+		draw_rect(Rect2(Vector2.ZERO, sz), Color(0.06, 0.08, 0.1, 0.78))
+		var p3: Vector3 = main.player.global_position
+		var fwd: Vector3 = main.player.global_basis.z
+		var yaw := atan2(fwd.x, fwd.z)
+		var rotate := mode == "rotate"
+		var focus := Vector2(p3.x, p3.z) if rotate else full_center
+		var xf := map_xform(focus, yaw, scale_m, center, rotate)
+		var world: World = main.world
+		draw_set_transform_matrix(xf)
+		var px := 1.0 / scale_m
+		var water := Color(0.15, 0.35, 0.55, 0.9)
+		draw_rect(Rect2(World.RIVER_X0, -4000, World.RIVER_X1 - World.RIVER_X0, 8000), water)
+		draw_rect(Rect2(World.SEA_X - 20.0, -4000, 4000, 8000), water)
+		for rl in world.road_lines:
+			var t: String = rl["type"]
+			var w := maxf(World.HALF[t] * 2.0 * 0.8, (3.0 if t == "hw" else 2.0) * px)
+			draw_polyline(rl["pts"], ROAD_COLORS[t], w)
+		draw_set_transform_matrix(Transform2D.IDENTITY)
+		if not rotate:
+			for lb in world.labels:
+				var v: Vector2 = xf * (lb["pos"] as Vector2)
+				draw_string(ThemeDB.fallback_font, v + Vector2(-90, 0), lb["text"], HORIZONTAL_ALIGNMENT_CENTER, 180, 15, Color(1, 1, 1, 0.9))
+		_marker(xf * Vector2(main.garage_pos.x, main.garage_pos.z), Color(1, 0.8, 0.2), "G")
 		var tgt = main.races.current_target()
 		if tgt != null:
-			_marker(xf.call(tgt), Color(0.2, 1, 0.4), "")
+			_marker(xf * Vector2(tgt.x, tgt.z), Color(0.2, 1, 0.4), "")
 		for t in main.traffic:
 			if is_instance_valid(t):
-				_dot(xf.call(t.global_position), Color(0.75, 0.75, 0.75), 2.5)
+				_dot(xf * Vector2(t.global_position.x, t.global_position.z), Color(0.8, 0.8, 0.8), 2.5)
 		for r in main.races.racers:
 			if is_instance_valid(r):
-				_dot(xf.call(r.global_position), Color(1, 0.6, 0.1), 4.0)
+				_dot(xf * Vector2(r.global_position.x, r.global_position.z), Color(1, 0.55, 0.1), 4.0)
 		var blink := int(Time.get_ticks_msec() / 250) % 2 == 0
 		for u in main.police.units:
 			if is_instance_valid(u):
-				_dot(xf.call(u.global_position), Color(1, 0.1, 0.1) if blink else Color(0.2, 0.4, 1), 4.5)
-		# oyuncu oku
-		draw_colored_polygon(PackedVector2Array([center + Vector2(0, -9), center + Vector2(6, 7), center + Vector2(-6, 7)]), Color(1, 1, 1))
-		draw_rect(Rect2(Vector2.ZERO, sz), Color(1, 0.7, 0.1, 0.8), false, 2.0)
+				_dot(xf * Vector2(u.global_position.x, u.global_position.z), Color(1, 0.15, 0.15) if blink else Color(0.25, 0.45, 1), 4.5)
+		# oyuncu oku: gerçek yönü gösterir (dönen haritada daima yukarı)
+		var pc: Vector2 = xf * Vector2(p3.x, p3.z)
+		var dir_pt: Vector2 = xf * (Vector2(p3.x, p3.z) + Vector2(fwd.x, fwd.z).normalized() * 10.0)
+		var d := (dir_pt - pc).normalized()
+		var side := Vector2(-d.y, d.x)
+		draw_colored_polygon(PackedVector2Array([pc + d * 10.0, pc - d * 7.0 + side * 7.0, pc - d * 4.0, pc - d * 7.0 - side * 7.0]), Color(1, 1, 1))
+		draw_rect(Rect2(Vector2.ZERO, sz), Color(1, 0.7, 0.1, 0.9), false, 2.0)
+		if not rotate:
+			draw_string(ThemeDB.fallback_font, Vector2(16, sz.y - 16), "Fare tekeri / + - : yakınlaştır   M/Tab: kapat", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.8))
 
 	func _dot(v: Vector2, c: Color, r: float) -> void:
 		if Rect2(Vector2.ZERO, size).has_point(v):
 			draw_circle(v, r, c)
 
 	func _marker(v: Vector2, c: Color, txt: String) -> void:
-		var r := Rect2(Vector2(6, 6), size - Vector2(12, 12))
+		var r := Rect2(Vector2(8, 8), size - Vector2(16, 16))
 		v = Vector2(clampf(v.x, r.position.x, r.end.x), clampf(v.y, r.position.y, r.end.y))
-		draw_circle(v, 7.0, c)
+		draw_circle(v, 8.0, c)
 		if txt != "":
-			draw_string(ThemeDB.fallback_font, v + Vector2(-4, 5), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color.BLACK)
+			draw_string(ThemeDB.fallback_font, v + Vector2(-5, 5), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.BLACK)

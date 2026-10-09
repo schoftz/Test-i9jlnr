@@ -1,0 +1,9 @@
+Ek 3D modeller / 3D model credits
+=================================
+Bu projede hazır gelen hiçbir dış 3D model yoktur; tüm araçlar ve dünya kodla üretilir.
+
+Kendi eklediğin modellerin lisans bilgisini buraya yaz (CC-BY modeller atıf ister). Örnek:
+  "Low Poly 22 Sedan Pack" - Phazan Product - Sketchfab - CC BY 4.0
+  https://sketchfab.com/...  (models/packs/sedan_pack.glb)
+
+Bu dosya oyunda Duraklat > Emeği Geçenler ekranında gösterilir.
