@@ -433,6 +433,29 @@ namespace MostWanted
             // çerçeve halkası (yuvarlak)
             DrawRing(mr.center, ms / 2f, new Color(1f, 1f, 1f, 0.85f));
             Vector2 c = mr.center;
+            // yarış rotası: oyuncudan itibaren kalan rota turuncu çizgi (daire içinde kırpılır)
+            if (g.race.Active && !g.race.IsDrag && g.race.PlayerEntry != null)
+            {
+                var route = g.race.def.route; int rn = route.Count;
+                float half = ms / 2f, scale = half / Mathf.Max(1f, g.mapCam.orthographicSize);
+                System.Func<Vector3, Vector2> toMap = w => { Vector3 d = p.transform.InverseTransformDirection(w - p.transform.position); return c + new Vector2(d.x, -d.z) * scale; };
+                Vector3 prevW = p.transform.position;
+                int idx = g.race.PlayerEntry.idx;
+                int count = g.race.circuit ? rn : rn - Mathf.Min(idx, rn);
+                for (int k = 0; k < count; k++)
+                {
+                    Vector3 w = route[(idx + k) % rn];
+                    Vector2 a = toMap(prevW), b = toMap(w);
+                    float len = Vector2.Distance(a, b);
+                    for (float t = 0f; t <= len; t += 2.5f)
+                    {
+                        Vector2 q = Vector2.Lerp(a, b, len > 0f ? t / len : 0f);
+                        if ((q - c).sqrMagnitude > (half - 4f) * (half - 4f)) continue;
+                        Rect(new Rect(q.x - 2.5f, q.y - 2.5f, 5f, 5f), new Color(1f, 0.55f, 0.05f, 0.95f));
+                    }
+                    prevW = w;
+                }
+            }
             // hedef yönü
             Vector3? target = null; Color tc = Color.green;
             if (g.race.Active) { target = g.race.NextCheckpoint; tc = Orange; }
