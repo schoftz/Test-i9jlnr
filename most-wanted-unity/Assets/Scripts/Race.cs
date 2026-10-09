@@ -18,8 +18,8 @@ namespace MostWanted
             public RacerDriver ai;
         }
 
-        public RaceDef def;
-        public List<Entry> entries = new List<Entry>();
+        [System.NonSerialized] public RaceDef def;
+        [System.NonSerialized] public List<Entry> entries = new List<Entry>();
         public bool circuit;
         public int laps;
         public float countdown, raceTime;

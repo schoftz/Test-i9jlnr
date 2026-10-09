@@ -98,6 +98,33 @@ Play'e bas. Oyun her şeyi (dünya, araçlar, polis, arayüz) çalışma anında
 
 ---
 
+## 3b. Harita süsleme (ithal şehirde, otomatik)
+
+İthal harita yüklendiğinde `MapDressing` şehri prosedürel olarak tamamlar (Duraklat → **Harita Süsleme** ile kapatılabilir):
+
+- **Çevre:** şehrin etrafında ~9×9 km arazi (tepeler, tarla parselleri, uzakta dağlar), doğuda **deniz** ve
+  denize akan **nehir**, kumsal şeridi, instanced **ormanlar** (Düşük 2.500 / Orta 6.000 / Yüksek 11.000 ağaç).
+  Su: `MostWanted/Water` URP shader'ı (kayan dalga normalleri, fresnel, güneş parlaması). Bulut kubbesi: `MostWanted/Clouds`.
+- **Otoyol:** güneydeki uzun yolun ucundan çıkıp şehrin dışından dolaşan ve doğu bulvarından şehre dönen
+  3+3 şeritli otoyol: orta bariyer, korkuluklar, aydınlatma direkleri, yeşil tabelalar ve nehir üstünde
+  **Boğaz Köprüsü** (kuleler + askı kabloları). Yol ağına eklenir → trafik/polis kullanır.
+  Yeni yarışlar: **Otoyol Sprinti**, **Otoyol Turu**, **Köprü Radarı**.
+- **Sokak donatısı:** lambalar (gece parlar; oyuncuya en yakın 2/4/6 tanesi gerçek ışık), büyük kavşaklarda
+  **çalışan trafik ışıkları** (trafik kırmızıda durur), DUR / 50 tabelaları, otobüs durakları, banklar, çöp kutuları,
+  yangın muslukları, geniş bulvarlarda ağaçlar, reklam panoları (sahte NFS tarzı reklamlar), yol çalışması bariyerleri,
+  8 adet **Pursuit Breaker**, oyuncunun etrafında yer değiştiren **park etmiş araçlar** (paket araçları, 20/40/70).
+- **Yol görünümü:** yaya geçitleri, rögar kapakları; **Islak Zemin** modu (asfalt parlar, su birikintileri,
+  Yüksek'te gerçek zamanlı yansıma probu).
+- **Atmosfer** (Duraklat menüsü): **Most Wanted** (sıcak/sepya renk), Normal, Gün Batımı, Gece
+  (cephe dokuları gece pencere ışığı olarak parlar).
+- **Yaşam:** kuş sürüleri, ara sıra geçen uçak (yanıp sönen ışık), şehir uğultusu ve uzaktan siren sesleri.
+- **Semtler:** Merkez, Liman, Banliyö Kuzey, Banliyö Güney, Sanayi, Otoyol — tabelalar, büyük haritada isimler,
+  semte girince bildirim.
+- Hepsi GPU instancing ile çizilir, 250 m hücrelerde mesafeyle kesilir; sayılar kalite ön ayarına göre ölçeklenir
+  (ön ayar değişikliğinin süslemeye tam yansıması için haritayı yeniden yükle).
+
+---
+
 ## 4. Performans (MacBook / Retina)
 
 Duraklat menüsü → **Grafik: Düşük / Orta / Yüksek / Otomatik**, **FPS hedefi: 30 (Pil tasarrufu) / 60 / 120 (ProMotion) / Sınırsız**.
@@ -144,5 +171,5 @@ Duraklat menüsü → **Grafik: Düşük / Orta / Yüksek / Otomatik**, **FPS he
 `Assets/Scripts`: `Game` (başlatma, ışık, post, menüler), `Car`/`CarBuilder`/`CarMath` (fizik, model oturtma),
 `PlayerDriver` (girdi, speedbreaker, nitro doldurma), `CameraRig`, `AI` (trafik, polis, rakip, helikopter, çivili şerit,
 pursuit breaker), `Police`, `Race`, `Career` (kara liste), `City` (test şehri), `World`/`BakedWorld` (harita, yol ağı),
-`OptimizationManager`, `HUD`, `AudioSynth`, `Data`/`CarRegistry`/`MapRegistry`.
-`Assets/Editor/MWSetup.cs`: URP kurulumu + araç/harita tarama. `Tools/physics_sim`: fizik testi. `Tools/map_bake`: yol ağı üretimi.
+`OptimizationManager`, `MapDressing` (harita süsleme), `HUD`, `AudioSynth`, `Data`/`CarRegistry`/`MapRegistry`.
+`Assets/Shaders`: su ve bulut shader'ları. `Assets/Editor/MWSetup.cs`: URP kurulumu + araç/harita tarama. `Tools/physics_sim`: fizik testi. `Tools/map_bake`: yol ağı üretimi.

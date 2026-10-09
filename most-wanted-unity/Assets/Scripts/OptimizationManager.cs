@@ -113,8 +113,10 @@ namespace MostWanted
                 }
                 else { SetEnumProp(a, "upscalingFilter", "Auto"); upscaler = "Yok (%100)"; }
 #if UNITY_6000_0_OR_NEWER
-                SetEnumProp(a, "gpuResidentDrawerMode", "InstancedDrawing");
-                SetProp(a, "gpuResidentDrawerEnableOcclusionCullingInCameras", q >= 1);
+                // GRD sadece tüm renderer'lar Forward+/Deferred+ ise (aksi halde Unity uyarı verir ve kapatır)
+                bool grdOk = RenderersSupportGRD(a);
+                SetEnumProp(a, "gpuResidentDrawerMode", grdOk ? "InstancedDrawing" : "Disabled");
+                SetProp(a, "gpuResidentDrawerEnableOcclusionCullingInCameras", grdOk && q >= 1);
 #endif
                 SetRendererFeature(a, "ScreenSpaceAmbientOcclusion", q == 2);
             }
@@ -137,7 +139,6 @@ namespace MostWanted
                     d[DetailLayer] = DetailCull[q];
                     d[TrafficLayer] = 300f;
                     g.cam.layerCullDistances = d;
-                    g.cam.layerCullSpherical = true;
                     var cd = g.cam.GetUniversalAdditionalCameraData();
                     if (cd != null) cd.antialiasing = q == 2 ? AntialiasingMode.SubpixelMorphologicalAntiAliasing : AntialiasingMode.FastApproximateAntialiasing;
                 }
@@ -169,6 +170,26 @@ namespace MostWanted
                 if (p == null || !p.CanWrite || !p.PropertyType.IsEnum) return false;
                 if (!Enum.IsDefined(p.PropertyType, enumName)) return false;
                 p.SetValue(o, Enum.Parse(p.PropertyType, enumName), null);
+                return true;
+            }
+            catch (Exception) { return false; }
+        }
+
+        static bool RenderersSupportGRD(UniversalRenderPipelineAsset a)
+        {
+            try
+            {
+                var f = typeof(UniversalRenderPipelineAsset).GetField("m_RendererDataList", BindingFlags.NonPublic | BindingFlags.Instance);
+                var list = f != null ? f.GetValue(a) as ScriptableRendererData[] : null;
+                if (list == null) return false;
+                foreach (var rd in list)
+                {
+                    if (rd == null) continue;
+                    var p = rd.GetType().GetProperty("renderingMode");
+                    if (p == null) return false;
+                    string m = p.GetValue(rd, null).ToString();
+                    if (!m.Contains("Plus")) return false;
+                }
                 return true;
             }
             catch (Exception) { return false; }

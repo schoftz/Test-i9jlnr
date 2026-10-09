@@ -17,7 +17,7 @@ namespace MostWanted
         public bool isPlayer, manualGearbox;
 
         // ---- Tanım ----
-        public CarEntry def;
+        [System.NonSerialized] public CarEntry def;
         public int[] tune = new int[Catalog.TuneCount];
         public float peakTorque, redline, topSpeed, finalDrive, dragK, grip = 1f, brakeTorque, downforceK, maxSteer = 32f;
         public float nitroCap = 1f, nitroPower = 1f, shiftTime = 0.28f, antiRoll, wheelRadius = 0.34f, wheelBase = 2.6f;
@@ -48,8 +48,8 @@ namespace MostWanted
         public List<Transform> flames = new List<Transform>();
         public ParticleSystem[] smoke = new ParticleSystem[2];
 
-        public System.Action<Collision> onHit;
-        public System.Action<int, int> onShift; // vites, kalite (0 normal, 1 iyi, 2 mükemmel)
+        [System.NonSerialized] public System.Action<Collision> onHit;
+        [System.NonSerialized] public System.Action<int, int> onShift; // vites, kalite (0 normal, 1 iyi, 2 mükemmel)
 
         float curSteer, uprightTimer, shiftTimer, limiterT;
         float[] sideStiff = { 1.4f, 1.4f, 1.35f, 1.35f };

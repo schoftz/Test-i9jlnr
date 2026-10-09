@@ -17,7 +17,7 @@ namespace MostWanted
         public enum Menu { None, Pause, Garage, Jobs, Map, Credits, Blacklist }
         public Menu menu = Menu.None;
 
-        public World world;
+        [System.NonSerialized] public World world;
         public CarController player;
         public PlayerDriver playerDriver;
         public Camera cam, mapCam, bigMapCam;
@@ -34,6 +34,13 @@ namespace MostWanted
         public float fps = 60f;
         public float baseFixedDelta = 1f / 60f;
         public OptimizationManager opt;
+        public MapDressing dressing;
+        public string district = "";
+        float districtTimer;
+        WhiteBalance whiteBalance;
+        SplitToning splitToning;
+        public static readonly string[] AtmosphereNames = { "Most Wanted", "Normal", "Gün Batımı", "Gece" };
+        static readonly float[] AtmosphereTime = { 0.40f, 0.45f, 0.70f, 0.93f };
         float mapRenderTimer;
         public float dayTime = 0.36f;
         public float dayLength = 720f;
@@ -145,9 +152,18 @@ namespace MostWanted
                 foreach (var p in city.breakerSites) breakers.Add(PursuitBreaker.Create(p, city.breakerKinds[breakers.Count], city.root));
             }
 
+            dressing = null;
+            if (!(world is City) && SaveSystem.Data.dressing)
+            {
+                try { dressing = MapDressing.Build(world, SaveSystem.Data.quality); }
+                catch (System.Exception e) { Debug.LogWarning("Harita süsleme başarısız: " + e); }
+            }
+
             SetupLighting();
             SetupCameras();
             SetupPost();
+            ApplyAtmosphere(SaveSystem.Data.atmosphere);
+            if (dressing != null) dressing.SetWet(SaveSystem.Data.wet);
 
             traffic = gameObject.AddComponent<TrafficManager>();
             police = gameObject.AddComponent<PoliceManager>();
@@ -287,6 +303,8 @@ namespace MostWanted
             chroma.intensity.Override(0f);
             motionBlur = prof.Add<MotionBlur>(true);
             motionBlur.intensity.Override(0f);
+            whiteBalance = prof.Add<WhiteBalance>(true);
+            splitToning = prof.Add<SplitToning>(true);
         }
 
         public void ApplyQuality(int q)
@@ -427,6 +445,13 @@ namespace MostWanted
             UpdateDayNight();
             UpdatePostFx();
             UpdateMapCams();
+            districtTimer -= Time.unscaledDeltaTime;
+            if (districtTimer <= 0f && dressing != null)
+            {
+                districtTimer = 2f;
+                string d = dressing.DistrictAt(player.transform.position);
+                if (d != district) { if (district != "") Toast(d + " bölgesine girdin"); district = d; }
+            }
             saveTimer += Time.deltaTime;
             if (saveTimer > 30f) { saveTimer = 0f; SaveSystem.Save(); }
         }
@@ -479,10 +504,38 @@ namespace MostWanted
             }
         }
 
+        /// <summary>Atmosfer: 0 Most Wanted (sıcak/sepya), 1 Normal, 2 Gün batımı, 3 Gece.</summary>
+        public void ApplyAtmosphere(int a)
+        {
+            a = Mathf.Clamp(a, 0, 3);
+            SaveSystem.Data.atmosphere = a;
+            if (SaveSystem.Data.alwaysDay) dayTime = AtmosphereTime[a];
+            if (whiteBalance != null)
+            {
+                whiteBalance.temperature.Override(a == 0 ? 18f : a == 2 ? 25f : a == 3 ? -15f : 0f);
+                whiteBalance.tint.Override(a == 0 ? 6f : 0f);
+            }
+            if (splitToning != null)
+            {
+                splitToning.shadows.Override(a == 0 ? new Color(0.35f, 0.45f, 0.5f) : a == 3 ? new Color(0.2f, 0.3f, 0.6f) : new Color(0.5f, 0.5f, 0.5f));
+                splitToning.highlights.Override(a == 0 ? new Color(0.75f, 0.6f, 0.35f) : a == 2 ? new Color(0.8f, 0.5f, 0.3f) : new Color(0.5f, 0.5f, 0.5f));
+                splitToning.balance.Override(a == 0 ? 15f : 0f);
+            }
+            if (colorAdj != null) colorAdj.colorFilter.Override(a == 0 ? new Color(1f, 0.93f, 0.8f) : Color.white);
+            SaveSystem.Save();
+        }
+
+        public void SetWet(bool on)
+        {
+            SaveSystem.Data.wet = on;
+            if (dressing != null) dressing.SetWet(on);
+            SaveSystem.Save();
+        }
+
         void UpdateDayNight()
         {
             bool always = SaveSystem.Data.alwaysDay;
-            if (always) dayTime = Mathf.MoveTowards(dayTime, 0.42f, Time.deltaTime * 0.01f);
+            if (always) dayTime = Mathf.MoveTowards(dayTime, AtmosphereTime[SaveSystem.Data.atmosphere], Time.deltaTime * 0.02f);
             else
             {
                 // kısa geceler: güneş batınca zaman 4 kat hızlı akar
@@ -514,6 +567,7 @@ namespace MostWanted
             {
                 envTimer = always ? 5f : 1f;
                 world.SetNight(Night);
+                if (dressing != null) dressing.SetNight(Night);
                 if (world is City) ((City)world).UpdateLampsNear(player.transform.position, Night);
                 bool on = Night > 0.35f;
                 if (headlight != null) headlight.enabled = on;

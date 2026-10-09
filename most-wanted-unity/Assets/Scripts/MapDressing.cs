@@ -25,6 +25,7 @@ namespace MostWanted
             readonly Dictionary<long, List<Matrix4x4>> cells = new Dictionary<long, List<Matrix4x4>>();
             readonly List<KeyValuePair<Vector3, Matrix4x4[]>> baked = new List<KeyValuePair<Vector3, Matrix4x4[]>>();
             public int Count;
+            public bool hidden;
             public void Add(Vector3 p, Quaternion r, Vector3 s)
             {
                 long k = ((long)Mathf.FloorToInt(p.x / 250f) << 32) ^ (uint)Mathf.FloorToInt(p.z / 250f);
@@ -52,7 +53,7 @@ namespace MostWanted
             }
             public void Draw(Vector3 cam, float cullMul)
             {
-                if (mesh == null) return;
+                if (mesh == null || hidden) return;
                 float cd = cull * cullMul;
                 for (int b = 0; b < baked.Count; b++)
                 {
@@ -93,7 +94,7 @@ namespace MostWanted
         readonly List<int> lightNodes = new List<int>();
         readonly List<Vector3> lampPositions = new List<Vector3>();
         readonly List<Light> lampPool = new List<Light>();
-        Material lampHead, tlRed, tlYellow, tlGreen, tlOff, streetWet;
+        Material lampHead, tlRed, tlYellow, tlGreen, tlOff;
         Mesh sphere, cube, cylinder, quad;
         Transform clouds;
         public bool wet;
@@ -539,9 +540,12 @@ namespace MostWanted
             }
 
             // tabelalar
+            if (hw.Count > 80)
+            {
             Sign(hw[30], hw[31], "OTOYOL  •  Liman  →  •  Merkez 4 km");
             Sign(hw[hw.Count - 30], hw[hw.Count - 31], "OTOYOL  •  Güney Banliyö  →");
             Sign(hw[hw.Count / 2], hw[hw.Count / 2 + 1], "Hız Sınırı 120  •  Polis Radarı");
+            }
 
             // yol ağına ekle: sağ şerit ofseti 6.6 m
             int prev = southNode;
@@ -610,7 +614,7 @@ namespace MostWanted
 
         void Sign(Vector3 at, Vector3 next, string text)
         {
-            Vector3 d = U.Flat(next - at).normalized; Vector3 r = new Vector3(d.z, 0, -d.x);
+            Vector3 d = U.Flat(next - at).normalized;
             var green = U.Mat(new Color(0.05f, 0.35f, 0.15f), 0.4f);
             var go = new GameObject("Tabela"); go.transform.SetParent(root, false);
             go.transform.SetPositionAndRotation(at, Quaternion.LookRotation(-d));
@@ -678,6 +682,7 @@ namespace MostWanted
             var stripe = Set(Combine(P(cube, Vector3.zero, new Vector3(0.6f, 0.02f, 3.2f))), new[] { U.Mat(new Color(0.85f, 0.85f, 0.82f), 0.3f) }, 200f, false);
             var puddle = Set(Combine(P(cylinder, Vector3.zero, new Vector3(1f, 0.005f, 1f))), new[] { U.Mat(new Color(0.05f, 0.06f, 0.08f), 0.97f, 0.1f) }, 150f, false);
             puddles = puddle;
+            puddle.hidden = true;
             var barrierMat = U.Mat(new Color(1f, 0.45f, 0.05f), 0.4f);
             var barrier = Set(Combine(P(cube, new Vector3(0, 0.5f, 0), new Vector3(1.6f, 1f, 0.4f))), new[] { barrierMat }, 250f);
 
@@ -793,11 +798,8 @@ namespace MostWanted
                 Vector3 df = U.Flat(g.nodes[g.adj[n][0]] - g.nodes[n]).normalized; Vector3 r = new Vector3(df.z, 0, -df.x);
                 Vector3 p = g.nodes[n] + df * 16f + r * (g.lane[n] * 2f + 6f);
                 if (Physics.CheckSphere(p + Vector3.up * 6f, 4f)) continue;
-                bool far = true;
-                foreach (var lp in lampPositions) { }
                 PursuitBreaker.Create(p, pbs % 2, root);
                 pbs++;
-                if (!far) break;
             }
 
             // DUR / hız tabelaları
@@ -968,7 +970,6 @@ namespace MostWanted
 
             ambience = gameObject.AddComponent<AudioSource>();
             ambience.clip = AudioSynth.CityHum(); ambience.loop = true; ambience.spatialBlend = 0f; ambience.volume = 0.12f;
-            ambience.outputAudioMixerGroup = AudioMixerHub.Group("Efekt");
             ambience.Play();
         }
 
@@ -994,6 +995,7 @@ namespace MostWanted
         public void SetWet(bool on)
         {
             wet = on;
+            if (puddles != null) puddles.hidden = !on;
             for (int i = 0; i < streetMats.Count; i++)
             {
                 var m = streetMats[i];
@@ -1034,9 +1036,8 @@ namespace MostWanted
             Vector3 cp = game.cam.transform.position;
             float cullMul = quality == 0 ? 0.6f : quality == 1 ? 0.8f : 1f;
             foreach (var s in sets) s.Draw(cp, cullMul);
-            if (puddles != null && !wet) { } // su birikintileri her zaman hafif görünür
             DrawTrafficLights(cp);
-            if (clouds != null) clouds.position = cp;
+            if (clouds != null) { clouds.position = cp; clouds.localScale = Vector3.one * game.cam.farClipPlane * 1.8f; }
 
             // lamba ışıkları
             lampTimer -= Time.deltaTime;

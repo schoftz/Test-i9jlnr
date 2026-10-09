@@ -100,6 +100,9 @@ namespace MostWanted
         public int quality = 1;      // 0 Düşük, 1 Orta, 2 Yüksek, 3 Otomatik
         public int fpsTarget = 1;    // 30/60/120/sınırsız
         public bool alwaysDay = true;
+        public int atmosphere = 0;   // 0 Most Wanted, 1 Normal, 2 Gün batımı, 3 Gece
+        public bool wet = false;
+        public bool dressing = true;
     }
 
     public static class SaveSystem

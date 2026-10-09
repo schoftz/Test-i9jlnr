@@ -6,7 +6,7 @@ namespace MostWanted
     public static class AudioSynth
     {
         const int Rate = 44100;
-        static AudioClip engine, siren, beep, beepHi, shift, rotor;
+        static AudioClip engine, siren, beep, beepHi, shift, rotor, hum;
 
         public static AudioClip Engine()
         {
@@ -105,6 +105,28 @@ namespace MostWanted
             rotor = AudioClip.Create("Rotor", n, 1, Rate, false);
             rotor.SetData(d, 0);
             return rotor;
+        }
+    
+        /// <summary>Şehir uğultusu: kahverengi gürültü + alçak trafik homurtusu (4 sn döngü).</summary>
+        public static AudioClip CityHum()
+        {
+            if (hum != null) return hum;
+            int n = Rate * 4;
+            var d = new float[n];
+            var rng = new System.Random(11);
+            float b = 0f;
+            for (int i = 0; i < n; i++)
+            {
+                float t = (float)i / Rate;
+                b = Mathf.Clamp(b + (float)(rng.NextDouble() * 2 - 1) * 0.02f, -1f, 1f) * 0.998f;
+                float swell = 0.6f + 0.4f * Mathf.Sin(2 * Mathf.PI * t / 4f);
+                d[i] = (b * 0.8f + Mathf.Sin(2 * Mathf.PI * 50f * t) * 0.05f) * swell;
+            }
+            // döngü sınırında yumuşak geçiş
+            for (int i = 0; i < Rate / 10; i++) { float k = i / (Rate / 10f); d[i] *= k; d[n - 1 - i] *= k; }
+            hum = AudioClip.Create("SehirUgultusu", n, 1, Rate, false);
+            hum.SetData(d, 0);
+            return hum;
         }
     }
 }

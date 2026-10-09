@@ -125,7 +125,7 @@ namespace MostWanted
             Shadow(new Rect(20, 12, 600, 40), U.Money(d.money), mid);
             Shadow(new Rect(20, 46, 700, 30), "Kariyer ödülü: " + U.Money(d.careerBounty) + "   Kara Liste: #" + (5 - Mathf.Min(d.rivalsBeaten, 5) > 0 ? (5 - d.rivalsBeaten).ToString() : "1 ✓"), small);
             var def = p.def;
-            Shadow(new Rect(20, 72, 700, 30), (def != null ? def.displayName : "") + "   •   " + CameraRig.ModeNames[(int)g.rig.mode] + (g.usingImportedMap ? "   •   İthal harita" : ""), small);
+            Shadow(new Rect(20, 72, 700, 30), (def != null ? def.displayName : "") + "   •   " + CameraRig.ModeNames[(int)g.rig.mode] + (g.usingImportedMap ? "   •   İthal harita" : "") + (g.district != "" ? "   •   " + g.district : ""), small);
 
             Minimap(g, W, H);
 
@@ -310,7 +310,7 @@ namespace MostWanted
 
         void DrawPause(Game g, float W, float H)
         {
-            var r = Panel(W, H, 620, 860, "DURAKLATILDI");
+            var r = Panel(W, H, 760, 1000, "DURAKLATILDI");
             GUILayout.BeginArea(new Rect(r.x + 40, r.y + 70, r.width - 80, r.height - 90));
             var d = SaveSystem.Data;
             GUILayout.Label("Para: " + U.Money(d.money) + "   Kazanılan yarış: " + d.racesWon + "   Kaçış: " + d.escapes + "   Yakalanma: " + d.busted, small);
@@ -337,6 +337,21 @@ namespace MostWanted
             }
             GUILayout.EndHorizontal();
             if (GUILayout.Button("Hep Gündüz: " + (d.alwaysDay ? "Açık" : "Kapalı (kısa geceler)"), btn)) { d.alwaysDay = !d.alwaysDay; SaveSystem.Save(); }
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Atmosfer:", small, GUILayout.Width(110));
+            for (int i = 0; i < Game.AtmosphereNames.Length; i++)
+            {
+                var old = GUI.backgroundColor;
+                if (d.atmosphere == i) GUI.backgroundColor = Orange;
+                if (GUILayout.Button(Game.AtmosphereNames[i], btn)) g.ApplyAtmosphere(i);
+                GUI.backgroundColor = old;
+            }
+            GUILayout.EndHorizontal();
+            GUI.enabled = g.dressing != null;
+            if (GUILayout.Button("Islak Zemin (yağmur sonrası): " + (d.wet ? "Açık" : "Kapalı"), btn)) g.SetWet(!d.wet);
+            GUI.enabled = g.usingImportedMap;
+            if (GUILayout.Button("Harita Süsleme: " + (d.dressing ? "Açık" : "Kapalı") + "  (haritayı yeniden yükler)", btn)) { d.dressing = !d.dressing; SaveSystem.Save(); g.SwitchMap(true); }
+            GUI.enabled = true;
             if (GUILayout.Button("FPS Göstergesi: " + (g.showFps ? "Açık" : "Kapalı") + " (F)", btn)) g.showFps = !g.showFps;
             GUI.enabled = g.HasImportedMap;
             if (GUILayout.Button("Harita: " + (g.usingImportedMap ? "İthal" : "Test") + (g.HasImportedMap ? "  (değiştir)" : "  (ithal harita yok)"), btn)) g.SwitchMap(!g.usingImportedMap);

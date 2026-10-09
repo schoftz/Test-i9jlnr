@@ -39,7 +39,12 @@ namespace MostWanted.EditorTools
         {
             if (PlayerSettings.colorSpace != ColorSpace.Linear) PlayerSettings.colorSpace = ColorSpace.Linear;
             var current = GraphicsSettings.defaultRenderPipeline as UniversalRenderPipelineAsset;
-            if (current != null) { if (QualitySettings.renderPipeline == null) QualitySettings.renderPipeline = current; return; }
+            if (current != null)
+            {
+                if (QualitySettings.renderPipeline == null) QualitySettings.renderPipeline = current;
+                ConfigureForGRD(current);
+                return;
+            }
             if (!AssetDatabase.IsValidFolder("Assets/Settings")) AssetDatabase.CreateFolder("Assets", "Settings");
             var asset = AssetDatabase.LoadAssetAtPath<UniversalRenderPipelineAsset>("Assets/Settings/MW_URP.asset");
             if (asset == null)
@@ -55,6 +60,7 @@ namespace MostWanted.EditorTools
                 AssetDatabase.SaveAssets();
             }
             GraphicsSettings.defaultRenderPipeline = asset;
+            ConfigureForGRD(asset);
             int cur = QualitySettings.GetQualityLevel();
             for (int i = 0; i < QualitySettings.names.Length; i++)
             {
@@ -64,6 +70,43 @@ namespace MostWanted.EditorTools
             QualitySettings.SetQualityLevel(cur, false);
             AssetDatabase.SaveAssets();
             Debug.Log("[MW] URP boru hattı oluşturuldu ve atandı: Assets/Settings/MW_URP.asset");
+        }
+
+        /// <summary>
+        /// GPU Resident Drawer için: renderer'lar Forward+ olmalı ve BatchRendererGroup varyantları korunmalı.
+        /// Sürüm farklarına karşı yansıma ile yapılır.
+        /// </summary>
+        static void ConfigureForGRD(UniversalRenderPipelineAsset asset)
+        {
+            try
+            {
+                var f = typeof(UniversalRenderPipelineAsset).GetField("m_RendererDataList", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var list = f != null ? f.GetValue(asset) as ScriptableRendererData[] : null;
+                if (list != null)
+                    foreach (var rd in list)
+                    {
+                        if (rd == null) continue;
+                        var p = rd.GetType().GetProperty("renderingMode");
+                        if (p == null || !p.PropertyType.IsEnum) continue;
+                        string cur = p.GetValue(rd, null).ToString();
+                        if (cur.Contains("Plus") || cur.StartsWith("Deferred")) continue;
+                        if (System.Enum.IsDefined(p.PropertyType, "ForwardPlus"))
+                        {
+                            p.SetValue(rd, System.Enum.Parse(p.PropertyType, "ForwardPlus"), null);
+                            EditorUtility.SetDirty(rd);
+                            Debug.Log("[MW] URP renderer Forward+ yapıldı (GPU Resident Drawer için).");
+                        }
+                    }
+                var egs = System.Type.GetType("UnityEditor.Rendering.EditorGraphicsSettings, UnityEditor");
+                var prop = egs != null ? egs.GetProperty("batchRendererGroupShaderStrippingMode", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static) : null;
+                if (prop != null && prop.PropertyType.IsEnum && System.Enum.IsDefined(prop.PropertyType, "KeepAll"))
+                {
+                    var keep = System.Enum.Parse(prop.PropertyType, "KeepAll");
+                    if (!prop.GetValue(null, null).Equals(keep)) { prop.SetValue(null, keep, null); Debug.Log("[MW] BatchRendererGroup varyantları: Keep All"); }
+                }
+                AssetDatabase.SaveAssets();
+            }
+            catch (System.Exception e) { Debug.LogWarning("[MW] GRD ayarı yapılamadı: " + e.Message); }
         }
 
         // ------------------------------------------------------------------ Arabalar

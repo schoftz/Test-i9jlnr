@@ -100,7 +100,10 @@ namespace MostWanted
                        role == CarRole.Racer ? new Color(1f, 0.35f, 1f) : new Color(0.75f, 0.75f, 0.75f);
             U.Icon(go.transform, ic, role == CarRole.Player ? 10f : 7f, true);
 
+            // Rigidbody'yi de taşı: interpolasyonlu gövdede sadece Transform taşımak geri alınır (araç orijinde kalıyordu)
             go.transform.SetPositionAndRotation(pos, rot);
+            rb.position = pos;
+            rb.rotation = rot;
             return car;
         }
 
@@ -413,6 +416,29 @@ namespace MostWanted
                 pr.shadowCastingMode = ShadowCastingMode.Off;
                 car.smoke[i] = ps;
             }
+        }
+
+        /// <summary>Park etmiş araç: sadece görsel + kutu çarpıştırıcı (fizik yok).</summary>
+        public static GameObject BuildStatic(CarEntry def, Color paint)
+        {
+            var go = new GameObject("ParkEtmisArac");
+            var vis = new GameObject("Gorsel").transform;
+            vis.SetParent(go.transform, false);
+            Bounds body = new Bounds(new Vector3(0, 0.75f, 0), new Vector3(1.9f, 1.3f, def.length));
+            var pm = new List<Material>(); var bm = new List<Material>(); var hm = new List<Material>();
+            WheelInfo[] wi = null;
+            if (def.prefab != null) { try { wi = FitModel(def, vis, ref body, pm, bm, hm); } catch (System.Exception) { wi = null; } }
+            if (wi == null)
+            {
+                for (int i = vis.childCount - 1; i >= 0; i--) Object.Destroy(vis.GetChild(i).gameObject);
+                pm.Clear();
+                ProceduralBody(def, vis, ref body, pm, bm, hm);
+            }
+            foreach (var m in pm) U.SetColor(m, paint);
+            var bc = go.AddComponent<BoxCollider>();
+            bc.center = body.center; bc.size = body.size;
+            foreach (var r in go.GetComponentsInChildren<Renderer>()) r.gameObject.layer = OptimizationManager.TrafficLayer;
+            return go;
         }
 
         // ------------------------------------------------------------------ Polis

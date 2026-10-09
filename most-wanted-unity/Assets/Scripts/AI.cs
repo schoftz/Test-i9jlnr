@@ -16,6 +16,7 @@ namespace MostWanted
 
         protected virtual void FixedUpdate()
         {
+            if (Game.I == null || Game.I.world == null) return;
             if (car == null || car.rb == null || car.rb.isKinematic) return;
             if (car.disabled) { car.throttle = 0f; car.handbrake = true; return; }
             Think();
@@ -62,7 +63,9 @@ namespace MostWanted
 
         public void Init(int a, int b) { prevNode = a; nextNode = b; }
 
-        protected Vector3 LaneTarget() { return Game.I.world.graph.LanePoint(prevNode, nextNode); }
+        protected static bool WorldReady { get { return Game.I != null && Game.I.world != null && Game.I.world.graph != null && Game.I.world.graph.nodes.Count > 1; } }
+
+        protected Vector3 LaneTarget() { return WorldReady ? Game.I.world.graph.LanePoint(prevNode, nextNode) : transform.position; }
 
         protected void AdvanceIfReached(Vector3 tgt, float radius = 9f)
         {
@@ -85,7 +88,10 @@ namespace MostWanted
             AdvanceIfReached(tgt);
             tgt = LaneTarget();
             float d = U.FlatDist(transform.position, tgt);
-            DriveTo(tgt, d < 25f ? Mathf.Min(cruiseKmh, 30f) : cruiseKmh, true);
+            float want = d < 25f ? Mathf.Min(cruiseKmh, 30f) : cruiseKmh;
+            // kırmızı ışıkta dur (polis takipteyken uymaz)
+            if (MapDressing.I != null && d < 32f && d > 9f && MapDressing.I.IsRed(prevNode, nextNode)) want = 0f;
+            DriveTo(tgt, want, true);
         }
 
         /// <summary>Uzak trafik: fizik kapalı, şerit boyunca kayar.</summary>
@@ -99,7 +105,7 @@ namespace MostWanted
 
         void Update()
         {
-            if (!far) return;
+            if (!far || !WorldReady) return;
             Vector3 tgt = LaneTarget();
             AdvanceIfReached(tgt, 3f);
             tgt = LaneTarget();
@@ -194,7 +200,7 @@ namespace MostWanted
     /// <summary>Yarış rotasını takip eden rakip.</summary>
     public class RacerDriver : AIDriver
     {
-        public RaceManager.Entry entry;
+        [System.NonSerialized] public RaceManager.Entry entry;
         public float skill = 1f;
         public float dragLaneX;
 
