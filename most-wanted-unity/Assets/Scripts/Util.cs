@@ -10,18 +10,20 @@ namespace MostWanted
         public const int IconLayer = 30;
 
         static Shader _std;
+        public static bool IsURP;
+        /// <summary>URP Lit (yoksa Standard) shader.</summary>
         public static Shader Std
         {
             get
             {
                 if (_std == null)
                 {
-                    // Resources içindeki malzeme, build'de Standard shader'ın dahil edilmesini garanti eder.
-                    var m = Resources.Load<Material>("MW_Standard");
-                    if (m != null) _std = m.shader;
+                    var m = Resources.Load<Material>("MW_Lit");
+                    if (m != null && m.shader != null && m.shader.isSupported) _std = m.shader;
+                    if (_std == null) { var s = Shader.Find("Universal Render Pipeline/Lit"); if (s != null && s.isSupported) _std = s; }
                     if (_std == null) _std = Shader.Find("Standard");
                     if (_std == null) _std = Shader.Find("Legacy Shaders/Diffuse");
-                    if (_std == null) _std = Shader.Find("Unlit/Color");
+                    IsURP = _std != null && _std.name.StartsWith("Universal");
                 }
                 return _std;
             }
@@ -42,10 +44,31 @@ namespace MostWanted
         public static Material NewMat(Color c, float smooth = 0.25f, float metal = 0f)
         {
             var m = new Material(Std);
-            m.color = c;
+            SetColor(m, c);
             if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", smooth);
+            if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", smooth);
             if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", metal);
+            m.enableInstancing = true;
             return m;
+        }
+
+        public static void SetColor(Material m, Color c)
+        {
+            if (m == null) return;
+            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
+            if (m.HasProperty("_Color")) m.SetColor("_Color", c);
+        }
+
+        public static void SetMainTex(Material m, Texture t)
+        {
+            if (m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", t);
+            if (m.HasProperty("_MainTex")) m.SetTexture("_MainTex", t);
+        }
+
+        public static void SetMainTexScale(Material m, Vector2 s)
+        {
+            if (m.HasProperty("_BaseMap")) m.SetTextureScale("_BaseMap", s);
+            if (m.HasProperty("_MainTex")) m.SetTextureScale("_MainTex", s);
         }
 
         public static Material Emissive(Color baseCol, Color emission)
@@ -65,6 +88,40 @@ namespace MostWanted
             m.EnableKeyword("_EMISSION");
             m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
             m.SetColor("_EmissionColor", e);
+        }
+
+        static Font _font;
+        public static Font BuiltinFont
+        {
+            get
+            {
+                if (_font == null)
+                {
+                    try { _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"); } catch (System.Exception) { }
+                    if (_font == null) { try { _font = Resources.GetBuiltinResource<Font>("Arial.ttf"); } catch (System.Exception) { } }
+                }
+                return _font;
+            }
+        }
+
+        /// <summary>3B yazı (polis yazısı, tabelalar).</summary>
+        public static GameObject Text3D(string text, Transform parent, Vector3 lpos, Quaternion lrot, float size, Color c)
+        {
+            var g = new GameObject("Yazi_" + text);
+            g.transform.SetParent(parent, false);
+            g.transform.localPosition = lpos;
+            g.transform.localRotation = lrot;
+            var tm = g.AddComponent<TextMesh>();
+            tm.text = text;
+            tm.font = BuiltinFont;
+            tm.fontSize = 64;
+            tm.characterSize = size / 10f;
+            tm.anchor = TextAnchor.MiddleCenter;
+            tm.color = c;
+            var r = g.GetComponent<MeshRenderer>();
+            if (tm.font != null) r.sharedMaterial = tm.font.material;
+            r.shadowCastingMode = ShadowCastingMode.Off;
+            return g;
         }
 
         public static GameObject Prim(PrimitiveType t, string name, Transform parent, Vector3 lpos, Vector3 lscale, Material mat, bool keepCollider = false)
@@ -190,12 +247,12 @@ namespace MostWanted
                 g.AddComponent<MeshFilter>().sharedMesh = ArrowMesh();
                 g.AddComponent<MeshRenderer>();
                 g.transform.SetParent(parent, false);
-                g.transform.localPosition = new Vector3(0, 120f, 0);
+                g.transform.localPosition = new Vector3(0, 200f, 0);
                 g.transform.localScale = Vector3.one * size;
             }
             else
             {
-                g = Prim(PrimitiveType.Quad, "MapIcon", parent, new Vector3(0, 120f, 0), Vector3.one * size, null);
+                g = Prim(PrimitiveType.Quad, "MapIcon", parent, new Vector3(0, 200f, 0), Vector3.one * size, null);
                 g.transform.localRotation = Quaternion.Euler(90, 0, 0);
             }
             var r = g.GetComponent<Renderer>();

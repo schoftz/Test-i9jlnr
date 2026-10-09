@@ -6,7 +6,7 @@ namespace MostWanted
     public static class AudioSynth
     {
         const int Rate = 44100;
-        static AudioClip engine, siren, beep, beepHi;
+        static AudioClip engine, siren, beep, beepHi, shift, rotor;
 
         public static AudioClip Engine()
         {
@@ -71,6 +71,40 @@ namespace MostWanted
             c.SetData(d, 0);
             if (high) beepHi = c; else beep = c;
             return c;
+        }
+            public static AudioClip Shift()
+        {
+            if (shift != null) return shift;
+            int n = Rate / 6;
+            var d = new float[n];
+            var rng = new System.Random(3);
+            for (int i = 0; i < n; i++)
+            {
+                float t = (float)i / Rate;
+                float env = Mathf.Exp(-t * 30f);
+                d[i] = ((float)(rng.NextDouble() * 2 - 1) * 0.6f + Mathf.Sin(2 * Mathf.PI * 90f * t) * 0.5f) * env;
+            }
+            shift = AudioClip.Create("Vites", n, 1, Rate, false);
+            shift.SetData(d, 0);
+            return shift;
+        }
+
+        public static AudioClip Rotor()
+        {
+            if (rotor != null) return rotor;
+            int n = Rate; // 1 sn, 6 Hz pervane darbesi
+            var d = new float[n];
+            var rng = new System.Random(5);
+            for (int i = 0; i < n; i++)
+            {
+                float t = (float)i / Rate;
+                float ph = Mathf.Repeat(t * 6f, 1f);
+                float thump = Mathf.Exp(-ph * 9f);
+                d[i] = ((float)(rng.NextDouble() * 2 - 1) * 0.5f * thump + Mathf.Sin(2 * Mathf.PI * 48f * t) * 0.4f * thump) * 0.8f;
+            }
+            rotor = AudioClip.Create("Rotor", n, 1, Rate, false);
+            rotor.SetData(d, 0);
+            return rotor;
         }
     }
 }

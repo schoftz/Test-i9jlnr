@@ -1,53 +1,72 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
+using UnityEngine.SceneManagement;
 
 namespace MostWanted
 {
     /// <summary>
-    /// Ana oyun nesnesi. Sahne kurmaya gerek yok: Play'e basınca RuntimeInitializeOnLoadMethod ile kendini oluşturur.
+    /// Ana oyun nesnesi. Sahne kurmaya gerek yok: Play'e basınca RuntimeInitializeOnLoadMethod ile kendini kurar.
     /// </summary>
     public class Game : MonoBehaviour
     {
         public static Game I;
 
-        public enum Menu { None, Pause, Garage, Jobs }
+        public enum Menu { None, Pause, Garage, Jobs, Map, Credits, Blacklist }
         public Menu menu = Menu.None;
 
-        public City city;
+        public World world;
         public CarController player;
-        public Camera cam, mapCam;
-        public RenderTexture mapRT;
+        public PlayerDriver playerDriver;
+        public Camera cam, mapCam, bigMapCam;
+        public CameraRig rig;
+        public RenderTexture mapRT, bigMapRT;
         public Light sun;
         public TrafficManager traffic;
         public PoliceManager police;
         public RaceManager race;
         public DeliveryManager delivery;
+        public Career career;
         public HUD hud;
-
-        public bool bumperCam;
-        public float dayTime = 0.30f;      // 0..1 (0.25 = gündoğumu, 0.75 = günbatımı)
-        public float dayLength = 420f;     // saniye
+        public bool showFps;
+        public float fps = 60f;
+        public float baseFixedDelta = 1f / 60f;
+        public OptimizationManager opt;
+        float mapRenderTimer;
+        public float dayTime = 0.36f;
+        public float dayLength = 720f;
         public float Night { get; private set; }
+        public string mapCredit = "";
+        public bool usingImportedMap;
+        public float bigMapZoom = 600f;
+        public Vector3 bigMapPan;
 
         Material sky;
         AudioSource sfx;
-        float camFov = 60f;
-        Vector3 camVel;
-        float saveTimer, envTimer;
+        float envTimer, saveTimer;
+        Volume volume;
+        Bloom bloom;
+        ColorAdjustments colorAdj;
+        Vignette vignette;
+        ChromaticAberration chroma;
+        MotionBlur motionBlur;
+        bool fogBackup;
+        readonly List<PursuitBreaker> breakers = new List<PursuitBreaker>();
 
         public readonly List<string> toasts = new List<string>();
         public readonly List<float> toastTimes = new List<float>();
+        public static readonly string[] QualityNames = { "Düşük", "Orta", "Yüksek" };
 
-        public bool InputBlocked { get { return menu != Menu.None || (race != null && race.Counting); } }
-        public bool NearGarage { get { return player != null && U.FlatDist(player.transform.position, city.garagePos) < 12f; } }
+        public bool InputBlocked { get { return menu != Menu.None || (race != null && race.Counting && !race.IsDrag); } }
+        public bool NearGarage { get { return player != null && world != null && U.FlatDist(player.transform.position, world.garagePos) < 12f; } }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
         {
             if (I != null) return;
-            var go = new GameObject("MW_Oyun");
-            go.AddComponent<Game>();
+            new GameObject("MW_Oyun").AddComponent<Game>();
         }
 
         void Awake()
@@ -59,35 +78,122 @@ namespace MostWanted
 
         void Start()
         {
-            Application.targetFrameRate = 60;
-            Time.fixedDeltaTime = 1f / 60f;
-            QualitySettings.shadowDistance = 160f;
-            QualitySettings.pixelLightCount = 8;
+            Catalog.Load();
             SaveSystem.Load();
+            sfx = gameObject.AddComponent<AudioSource>();
+            sfx.spatialBlend = 0f;
+            RenderPipelineManager.beginCameraRendering += OnBeginCam;
+            RenderPipelineManager.endCameraRendering += OnEndCam;
+            Init();
+        }
 
-            // Sahnedeki varsayılan kamera/ışıkları temizle
+        void OnDestroy()
+        {
+            RenderPipelineManager.beginCameraRendering -= OnBeginCam;
+            RenderPipelineManager.endCameraRendering -= OnEndCam;
+        }
+
+        // minimap kameralarında sis kapalı
+        void OnBeginCam(ScriptableRenderContext ctx, Camera c)
+        {
+            if (c == mapCam || c == bigMapCam) { fogBackup = RenderSettings.fog; RenderSettings.fog = false; }
+        }
+        void OnEndCam(ScriptableRenderContext ctx, Camera c)
+        {
+            if (c == mapCam || c == bigMapCam) RenderSettings.fog = fogBackup;
+        }
+
+        // ------------------------------------------------------------------ kurulum
+        void Init()
+        {
             foreach (var c in Camera.allCameras) if (c != null) Destroy(c.gameObject);
             var dl = GameObject.Find("Directional Light");
             if (dl != null) Destroy(dl);
 
-            city = new City();
-            city.Build();
+            world = null;
+            usingImportedMap = false;
+            mapCredit = "";
+            var reg = Resources.Load<MapRegistry>("MapRegistry");
+            bool wantImported = PlayerPrefs.GetInt("MW_MAP", 1) == 1;
+            if (wantImported && reg != null && reg.maps.Count > 0 && reg.maps[0].prefab != null)
+            {
+                var baked = Resources.Load<TextAsset>("MapData/" + reg.maps[0].name.Replace("_opt", "") + "_roadgraph");
+                if (baked != null)
+                {
+                    try
+                    {
+                        var bw = new BakedWorld(reg.maps[0].prefab, baked.text, reg.maps[0].credit);
+                        bw.Build();
+                        world = bw; usingImportedMap = true; mapCredit = reg.maps[0].credit;
+                    }
+                    catch (System.Exception e) { Debug.LogWarning("Pişmiş harita yüklenemedi: " + e.Message); if (world == null) CleanupWorldRoot(); }
+                }
+                if (world == null) try
+                {
+                    var iw = new ImportedWorld(reg.maps[0].prefab, reg.maps[0].credit);
+                    iw.Build();
+                    if (iw.graph.nodes.Count >= 10) { world = iw; usingImportedMap = true; mapCredit = reg.maps[0].credit; }
+                    else { Debug.LogWarning("İthal haritada yol bulunamadı, test şehrine dönülüyor."); Destroy(iw.root.gameObject); }
+                }
+                catch (System.Exception e) { Debug.LogWarning("Harita yüklenemedi: " + e.Message); }
+            }
+            if (world == null)
+            {
+                var city = new City();
+                city.Build();
+                world = city;
+                foreach (var p in city.breakerSites) breakers.Add(PursuitBreaker.Create(p, city.breakerKinds[breakers.Count], city.root));
+            }
 
             SetupLighting();
             SetupCameras();
-
-            sfx = gameObject.AddComponent<AudioSource>();
-            sfx.spatialBlend = 0f;
+            SetupPost();
 
             traffic = gameObject.AddComponent<TrafficManager>();
             police = gameObject.AddComponent<PoliceManager>();
             race = gameObject.AddComponent<RaceManager>();
-            race.Setup(city);
             delivery = gameObject.AddComponent<DeliveryManager>();
+            career = gameObject.AddComponent<Career>();
             hud = gameObject.AddComponent<HUD>();
+            opt = gameObject.AddComponent<OptimizationManager>();
+            opt.Init(SaveSystem.Data.quality, SaveSystem.Data.fpsTarget);
+            ApplyTimeScale();
+            if (world is City) ((City)world).MarkDetailLayers();
+            SpawnPlayer(world.garagePos + Vector3.up * 0.5f, world.garageRot);
+            rig.Snap();
+            Toast("Most Wanted'a hoş geldin! Garaj: E  •  İşler: J  •  Kara Liste: B  •  Harita: M");
+        }
 
-            SpawnPlayer(city.garagePos + Vector3.up * 0.6f, city.garageRot);
-            Toast("Most Wanted'a hoş geldin! Garaj için E, işler için J.");
+        void CleanupWorldRoot()
+        {
+            var r = GameObject.Find("IthalHarita");
+            if (r != null) Destroy(r);
+        }
+
+        IEnumerator Rebuild()
+        {
+            CloseMenu();
+            race.Abort();
+            police.EndPursuit(false);
+            foreach (var c in new Component[] { traffic, police, race, delivery, career, hud, opt }) if (c != null) Destroy(c);
+            breakers.Clear();
+            foreach (var go in SceneManager.GetActiveScene().GetRootGameObjects()) Destroy(go);
+            player = null;
+            yield return null;
+            yield return null;
+            Init();
+        }
+
+        public void SwitchMap(bool imported)
+        {
+            PlayerPrefs.SetInt("MW_MAP", imported ? 1 : 0);
+            PlayerPrefs.Save();
+            StartCoroutine(Rebuild());
+        }
+
+        public bool HasImportedMap
+        {
+            get { var reg = Resources.Load<MapRegistry>("MapRegistry"); return reg != null && reg.maps.Count > 0 && reg.maps[0].prefab != null; }
         }
 
         void SetupLighting()
@@ -96,7 +202,8 @@ namespace MostWanted
             sun = sg.AddComponent<Light>();
             sun.type = LightType.Directional;
             sun.shadows = LightShadows.Soft;
-            sun.shadowStrength = 0.8f;
+            sun.shadowStrength = 0.75f;
+            sun.intensity = 1.35f;
             RenderSettings.sun = sun;
 
             var skyRes = Resources.Load<Material>("MW_Sky");
@@ -104,13 +211,17 @@ namespace MostWanted
             if (skyShader != null)
             {
                 sky = new Material(skyShader);
-                if (sky.HasProperty("_SunSize")) sky.SetFloat("_SunSize", 0.04f);
+                if (sky.HasProperty("_SunSize")) sky.SetFloat("_SunSize", 0.035f);
+                if (sky.HasProperty("_Exposure")) sky.SetFloat("_Exposure", 1.15f);
+                if (sky.HasProperty("_AtmosphereThickness")) sky.SetFloat("_AtmosphereThickness", 0.9f);
                 RenderSettings.skybox = sky;
             }
-            RenderSettings.ambientMode = AmbientMode.Flat;
+            RenderSettings.ambientMode = AmbientMode.Skybox;
+            RenderSettings.ambientIntensity = 1f;
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Exponential;
-            RenderSettings.fogDensity = 0.0028f;
+            RenderSettings.fogDensity = 0.0011f;
+            DynamicGI.UpdateEnvironment();
         }
 
         void SetupCameras()
@@ -124,60 +235,164 @@ namespace MostWanted
             cam.cullingMask = ~(1 << U.IconLayer);
             cam.clearFlags = CameraClearFlags.Skybox;
             cg.AddComponent<AudioListener>();
+            var cd = cam.GetUniversalAdditionalCameraData();
+            if (cd != null) { cd.renderPostProcessing = true; cd.antialiasing = AntialiasingMode.FastApproximateAntialiasing; }
+            rig = cg.AddComponent<CameraRig>();
+            rig.cam = cam;
 
-            mapRT = new RenderTexture(256, 256, 16);
-            mapRT.name = "MinimapRT";
-            var mg = new GameObject("MinimapKamera");
-            mapCam = mg.AddComponent<Camera>();
-            mapCam.orthographic = true;
-            mapCam.orthographicSize = 140f;
-            mapCam.targetTexture = mapRT;
-            mapCam.clearFlags = CameraClearFlags.SolidColor;
-            mapCam.backgroundColor = new Color(0.05f, 0.08f, 0.05f);
-            mapCam.nearClipPlane = 1f;
-            mapCam.farClipPlane = 400f;
-            mapCam.depth = -5;
-            mg.AddComponent<MinimapCamera>();
+            mapRT = new RenderTexture(320, 320, 16) { name = "MinimapRT" };
+            mapCam = MakeTopCam("MinimapKamera", mapRT, 140f);
+            mapCam.enabled = false; // 15 fps elle render edilir
+            bigMapRT = new RenderTexture(1024, 1024, 16) { name = "HaritaRT" };
+            bigMapCam = MakeTopCam("HaritaKamera", bigMapRT, 600f);
+            bigMapCam.enabled = false;
         }
 
+        Camera MakeTopCam(string name, RenderTexture rt, float size)
+        {
+            var mg = new GameObject(name);
+            var c = mg.AddComponent<Camera>();
+            c.orthographic = true;
+            c.orthographicSize = size;
+            c.targetTexture = rt;
+            c.clearFlags = CameraClearFlags.SolidColor;
+            c.backgroundColor = new Color(0.05f, 0.08f, 0.05f);
+            c.nearClipPlane = 1f;
+            c.farClipPlane = 1000f;
+            c.depth = -5;
+            var d = c.GetUniversalAdditionalCameraData();
+            if (d != null) { d.renderShadows = false; d.renderPostProcessing = false; }
+            return c;
+        }
+
+        void SetupPost()
+        {
+            var vg = new GameObject("PostFX");
+            volume = vg.AddComponent<Volume>();
+            volume.isGlobal = true;
+            var prof = ScriptableObject.CreateInstance<VolumeProfile>();
+            volume.sharedProfile = prof;
+            bloom = prof.Add<Bloom>(true);
+            bloom.intensity.Override(0.35f);
+            bloom.threshold.Override(1.15f);
+            var tm = prof.Add<Tonemapping>(true);
+            tm.mode.Override(TonemappingMode.ACES);
+            colorAdj = prof.Add<ColorAdjustments>(true);
+            colorAdj.postExposure.Override(0.25f);
+            colorAdj.contrast.Override(8f);
+            colorAdj.saturation.Override(10f);
+            vignette = prof.Add<Vignette>(true);
+            vignette.intensity.Override(0.18f);
+            chroma = prof.Add<ChromaticAberration>(true);
+            chroma.intensity.Override(0f);
+            motionBlur = prof.Add<MotionBlur>(true);
+            motionBlur.intensity.Override(0f);
+        }
+
+        public void ApplyQuality(int q)
+        {
+            SaveSystem.Data.quality = Mathf.Clamp(q, 0, 3);
+            if (opt != null) opt.SetPreset(SaveSystem.Data.quality);
+            ApplyTimeScale();
+            SaveSystem.Save();
+        }
+
+        public void SetFpsTarget(int i)
+        {
+            SaveSystem.Data.fpsTarget = i;
+            OptimizationManager.SetFpsTarget(i);
+            SaveSystem.Save();
+        }
+
+        /// <summary>Post efekt kalitesi: Düşük'te bloom/motion blur yok.</summary>
+        public void SetPostQuality(int q)
+        {
+            if (bloom != null) { bloom.active = q >= 1; bloom.threshold.value = 1.2f; }
+            if (motionBlur != null) motionBlur.active = q >= 1;
+            if (chroma != null) chroma.active = q >= 1;
+        }
+
+        // ------------------------------------------------------------------ oyuncu
         public void SpawnPlayer(Vector3 pos, Quaternion rot)
         {
-            float nitro = 1f;
-            if (player != null) { nitro = player.nitro; Destroy(player.gameObject); }
+            float nitro = 1f, sb = 1f;
+            if (player != null)
+            {
+                nitro = player.nitro;
+                if (playerDriver != null) { sb = playerDriver.speedbreaker; playerDriver.SetSpeedbreaker(false); }
+                Destroy(player.gameObject);
+            }
             var d = SaveSystem.Data;
-            var spec = Catalog.Cars[d.selected];
-            var save = SaveSystem.Get(d.selected);
-            Color col = save.color >= 0 ? Catalog.Paints[save.color] : spec.color;
-            player = CarFactory.Build(spec, col, pos, rot, CarRole.Player, "Oyuncu");
-            CarFactory.ApplyTuning(player, spec, save);
+            var def = Catalog.Get(d.selected) ?? Catalog.Garage[0];
+            var save = SaveSystem.Get(def.id);
+            Color col = save != null && save.color >= 0 ? Catalog.Paints[save.color] : def.defaultColor;
+            player = CarFactory.Build(def, col, pos, rot, CarRole.Player, save != null ? save.tune : null, "Oyuncu");
             player.nitro = nitro;
-            player.gameObject.AddComponent<PlayerDriver>();
-            player.onHit = c => police.OnPlayerHit(c);
-            // gece farları
+            playerDriver = player.gameObject.AddComponent<PlayerDriver>();
+            playerDriver.speedbreaker = sb;
+            player.onHit = c =>
+            {
+                police.OnPlayerHit(c);
+                if (c.rigidbody != null) playerDriver.MarkTouched(c.rigidbody);
+                if (c.relativeVelocity.magnitude > 8f) rig.Shake(Mathf.Clamp01(c.relativeVelocity.magnitude / 30f));
+            };
             var hl = new GameObject("Farlar");
             hl.transform.SetParent(player.transform, false);
-            hl.transform.localPosition = new Vector3(0, 0.9f, spec.length / 2 + 0.2f);
+            hl.transform.localPosition = new Vector3(0, 0.9f, def.length / 2 + 0.2f);
             hl.transform.localRotation = Quaternion.Euler(8, 0, 0);
-            var l = hl.AddComponent<Light>();
-            l.type = LightType.Spot; l.range = 70f; l.spotAngle = 70f; l.intensity = 2.2f; l.color = new Color(1f, 0.96f, 0.85f);
-            l.shadows = LightShadows.None;
-            playerHeadlight = l;
+            headlight = hl.AddComponent<Light>();
+            headlight.type = LightType.Spot; headlight.range = 70f; headlight.spotAngle = 70f; headlight.intensity = 3f;
+            headlight.color = new Color(1f, 0.96f, 0.85f);
+            headlight.shadows = LightShadows.None;
+            if (rig != null) rig.target = player;
         }
 
-        Light playerHeadlight;
+        Light headlight;
+
+        // ------------------------------------------------------------------ zaman / menü
+        public void ApplyTimeScale()
+        {
+            float s = menu != Menu.None ? 0f : (playerDriver != null && playerDriver.speedbreakerOn ? 0.35f : 1f);
+            Time.timeScale = s;
+            Time.fixedDeltaTime = baseFixedDelta * Mathf.Max(0.35f, s);
+            AudioListener.pause = menu != Menu.None;
+        }
+
+        public void OpenMenu(Menu m)
+        {
+            menu = m;
+            if (m == Menu.Garage && hud != null) hud.garageSel = Mathf.Max(0, Catalog.Garage.IndexOf(Catalog.Get(SaveSystem.Data.selected)));
+            if (m == Menu.Map) { bigMapCam.enabled = true; bigMapPan = Vector3.zero; }
+            ApplyTimeScale();
+        }
+
+        public void CloseMenu()
+        {
+            if (menu == Menu.Garage)
+            {
+                SaveSystem.Save();
+                SpawnPlayer(world.garagePos + Vector3.up * 0.5f, world.garageRot);
+                rig.Snap();
+            }
+            if (bigMapCam != null) bigMapCam.enabled = false;
+            menu = Menu.None;
+            ApplyTimeScale();
+        }
 
         void Update()
         {
             float udt = Time.unscaledDeltaTime;
+            fps = Mathf.Lerp(fps, 1f / Mathf.Max(udt, 0.0001f), 0.05f);
             for (int i = toastTimes.Count - 1; i >= 0; i--)
             {
                 toastTimes[i] -= udt;
                 if (toastTimes[i] <= 0f) { toastTimes.RemoveAt(i); toasts.RemoveAt(i); }
             }
-
+            if (player == null || world == null) return;
             HandleKeys();
             UpdateDayNight();
-
+            UpdatePostFx();
+            UpdateMapCams();
             saveTimer += Time.deltaTime;
             if (saveTimer > 30f) { saveTimer = 0f; SaveSystem.Save(); }
         }
@@ -189,122 +404,114 @@ namespace MostWanted
                 if (menu == Menu.None) OpenMenu(Menu.Pause);
                 else CloseMenu();
             }
-            if (Input.GetKeyDown(KeyCode.E))
+            bool drag = race.Active && race.IsDrag;
+            if (Input.GetKeyDown(KeyCode.E) && !drag)
             {
                 if (menu == Menu.Garage) CloseMenu();
                 else if (menu == Menu.None)
                 {
-                    if (!NearGarage) Toast("Garaja gitmek için yeşil işarete git (haritada yeşil kare).");
+                    if (!NearGarage) Toast("Garaj için haritadaki yeşil işarete git.");
                     else if (police.pursuit) Toast("Polis peşindeyken garaja giremezsin!");
                     else if (race.Active) Toast("Yarış sırasında garaja giremezsin!");
                     else OpenMenu(Menu.Garage);
                 }
             }
-            if (Input.GetKeyDown(KeyCode.J))
-            {
-                if (menu == Menu.Jobs) CloseMenu();
-                else if (menu == Menu.None) OpenMenu(Menu.Jobs);
-            }
-            if (Input.GetKeyDown(KeyCode.C) && menu == Menu.None) bumperCam = !bumperCam;
-            if (Input.GetKeyDown(KeyCode.R) && menu == Menu.None && player != null && player.SpeedKmh < 10f) player.Unflip();
-        }
+            if (Input.GetKeyDown(KeyCode.J)) { if (menu == Menu.Jobs) CloseMenu(); else if (menu == Menu.None) OpenMenu(Menu.Jobs); }
+            if (Input.GetKeyDown(KeyCode.B)) { if (menu == Menu.Blacklist) CloseMenu(); else if (menu == Menu.None) OpenMenu(Menu.Blacklist); }
+            if (Input.GetKeyDown(KeyCode.M) || Input.GetKeyDown(KeyCode.Tab)) { if (menu == Menu.Map) CloseMenu(); else if (menu == Menu.None) OpenMenu(Menu.Map); }
+            if (Input.GetKeyDown(KeyCode.C) && menu == Menu.None) rig.Next();
+            if (Input.GetKeyDown(KeyCode.F)) showFps = !showFps;
+            if (Input.GetKeyDown(KeyCode.R) && menu == Menu.None && !race.Counting) player.Unflip();
+            if (Input.GetKeyDown(KeyCode.F9)) { SaveSystem.AddMoney(1000000); Toast("Hile: +" + U.Money(1000000)); }
+            if (Input.GetKeyDown(KeyCode.F10) && !race.Active) { police.ForceHeat(5); Toast("Hile: Aranma seviyesi 5 yıldız!"); }
 
-        public void OpenMenu(Menu m)
-        {
-            menu = m;
-            Time.timeScale = 0f;
-            AudioListener.pause = true;
-            if (m == Menu.Garage && hud != null) hud.garageSel = SaveSystem.Data.selected;
-        }
-
-        public void CloseMenu()
-        {
-            if (menu == Menu.Garage)
+            if (menu == Menu.Map)
             {
-                SaveSystem.Save();
-                SpawnPlayer(city.garagePos + Vector3.up * 0.6f, city.garageRot);
+                float z = Input.mouseScrollDelta.y;
+                if (Input.GetKey(KeyCode.Equals) || Input.GetKey(KeyCode.KeypadPlus)) z += Time.unscaledDeltaTime * 4f;
+                if (Input.GetKey(KeyCode.Minus) || Input.GetKey(KeyCode.KeypadMinus)) z -= Time.unscaledDeltaTime * 4f;
+                bigMapZoom = Mathf.Clamp(bigMapZoom * (1f - z * 0.12f), 120f, 2500f);
+                Vector3 pan = Vector3.zero;
+                if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow)) pan.z += 1f;
+                if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow)) pan.z -= 1f;
+                if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) pan.x += 1f;
+                if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) pan.x -= 1f;
+                bigMapPan += pan * bigMapZoom * Time.unscaledDeltaTime;
+                if (Input.GetMouseButton(0))
+                {
+                    float px = Input.GetAxisRaw("Mouse X"), py = Input.GetAxisRaw("Mouse Y");
+                    bigMapPan -= new Vector3(px, 0, py) * bigMapZoom * 0.02f;
+                }
             }
-            menu = Menu.None;
-            Time.timeScale = 1f;
-            AudioListener.pause = false;
         }
 
         void UpdateDayNight()
         {
-            dayTime = Mathf.Repeat(dayTime + Time.deltaTime / dayLength, 1f);
-            float sunAngle = (dayTime - 0.25f) * 360f; // 0 = ufuk (doğu)
-            Quaternion sunRot = Quaternion.Euler(sunAngle, -30f, 0f);
+            bool always = SaveSystem.Data.alwaysDay;
+            if (always) dayTime = Mathf.MoveTowards(dayTime, 0.42f, Time.deltaTime * 0.01f);
+            else
+            {
+                // kısa geceler: güneş batınca zaman 4 kat hızlı akar
+                float speed = Night > 0.5f ? 4f : 1f;
+                dayTime = Mathf.Repeat(dayTime + Time.deltaTime / dayLength * speed, 1f);
+            }
+            float sunAngle = (dayTime - 0.25f) * 360f;
             float elev = Mathf.Sin(sunAngle * Mathf.Deg2Rad);
-            float day = Mathf.Clamp01((elev + 0.08f) / 0.35f);
+            float day = Mathf.Clamp01((elev + 0.08f) / 0.3f);
             Night = 1f - day;
-
             if (elev > -0.05f)
             {
-                sun.transform.rotation = sunRot;
-                sun.intensity = Mathf.Lerp(0.05f, 1.15f, day);
-                sun.color = Color.Lerp(new Color(1f, 0.55f, 0.3f), new Color(1f, 0.96f, 0.88f), Mathf.Clamp01(elev * 3f));
+                sun.transform.rotation = Quaternion.Euler(sunAngle, -35f, 0f);
+                sun.intensity = Mathf.Lerp(0.15f, 1.35f, day);
+                sun.color = Color.Lerp(new Color(1f, 0.6f, 0.38f), new Color(1f, 0.96f, 0.9f), Mathf.Clamp01(elev * 3f));
             }
             else
             {
-                // ay ışığı
-                sun.transform.rotation = Quaternion.Euler(sunAngle - 180f, -30f, 0f);
-                sun.intensity = 0.18f;
-                sun.color = new Color(0.55f, 0.65f, 1f);
+                sun.transform.rotation = Quaternion.Euler(sunAngle - 180f, -35f, 0f);
+                sun.intensity = 0.25f;
+                sun.color = new Color(0.6f, 0.7f, 1f);
             }
+            RenderSettings.fogColor = Color.Lerp(new Color(0.06f, 0.07f, 0.12f), new Color(0.72f, 0.8f, 0.9f), day);
+            if (sky != null && sky.HasProperty("_Exposure")) sky.SetFloat("_Exposure", Mathf.Lerp(0.25f, 1.15f, day));
+            RenderSettings.ambientIntensity = Mathf.Lerp(0.6f, 1f, day);
 
-            RenderSettings.ambientLight = Color.Lerp(new Color(0.08f, 0.09f, 0.16f), new Color(0.55f, 0.58f, 0.62f), day);
-            RenderSettings.fogColor = Color.Lerp(new Color(0.04f, 0.05f, 0.1f), new Color(0.68f, 0.75f, 0.85f), day);
-            if (sky != null)
-            {
-                if (sky.HasProperty("_Exposure")) sky.SetFloat("_Exposure", Mathf.Lerp(0.12f, 1.25f, day));
-                if (sky.HasProperty("_AtmosphereThickness")) sky.SetFloat("_AtmosphereThickness", Mathf.Lerp(0.6f, 1.0f, day));
-            }
-            if (cam != null) cam.backgroundColor = RenderSettings.fogColor;
-
-            envTimer -= Time.deltaTime;
+            envTimer -= Time.unscaledDeltaTime;
             if (envTimer <= 0f)
             {
-                envTimer = 0.25f;
-                city.SetNight(Night);
-                if (playerHeadlight != null) playerHeadlight.enabled = Night > 0.35f;
+                envTimer = always ? 5f : 1f;
+                world.SetNight(Night);
+                if (world is City) ((City)world).UpdateLampsNear(player.transform.position, Night);
+                bool on = Night > 0.35f;
+                if (headlight != null) headlight.enabled = on;
+                if (player != null) player.SetHeadlights(on);
+                DynamicGI.UpdateEnvironment();
             }
         }
 
-        void LateUpdate()
+        void UpdatePostFx()
         {
-            if (player == null || cam == null) return;
-            var t = player.transform;
+            if (colorAdj == null || player == null) return;
+            bool sb = playerDriver != null && playerDriver.speedbreakerOn;
             float kmh = player.SpeedKmh;
-            float targetFov = 60f + Mathf.Clamp01(kmh / 250f) * 10f + (player.nitroActive ? 14f : 0f);
-            if (bumperCam)
-            {
-                cam.transform.position = t.TransformPoint(new Vector3(0, 1.05f, Catalog.Cars[SaveSystem.Data.selected].length / 2 + 0.1f));
-                cam.transform.rotation = Quaternion.LookRotation(t.forward, Vector3.up);
-                targetFov += 8f;
-            }
-            else
-            {
-                Vector3 fwd = U.Flat(t.forward);
-                if (fwd.sqrMagnitude < 0.01f) fwd = Vector3.forward;
-                fwd.Normalize();
-                Vector3 vel = U.Flat(U.Vel(player.rb));
-                // geri giderken kamera arkada kalsın, drift'te araç yönüne doğru yumuşakça dönsün
-                Vector3 look = vel.magnitude > 5f && Vector3.Dot(vel.normalized, fwd) > 0.2f ? Vector3.Slerp(fwd, vel.normalized, 0.35f) : fwd;
-                float dist = 6.8f + Mathf.Clamp01(kmh / 250f) * 1.5f;
-                Vector3 desired = t.position - look * dist + Vector3.up * 2.4f;
-                float dt = Mathf.Max(Time.deltaTime, 0.0001f);
-                cam.transform.position = Vector3.SmoothDamp(cam.transform.position, desired, ref camVel, 0.12f, Mathf.Infinity, dt);
-                cam.transform.rotation = Quaternion.LookRotation((t.position + Vector3.up * 1.2f + look * 3f) - cam.transform.position, Vector3.up);
-            }
-            camFov = Mathf.Lerp(camFov, targetFov, Time.deltaTime * 4f);
-            cam.fieldOfView = camFov;
+            colorAdj.saturation.value = Mathf.Lerp(colorAdj.saturation.value, sb ? -45f : 10f, Time.unscaledDeltaTime * 5f);
+            vignette.intensity.value = Mathf.Lerp(vignette.intensity.value, sb ? 0.45f : (player.nitroActive ? 0.3f : 0.18f), Time.unscaledDeltaTime * 5f);
+            chroma.intensity.value = Mathf.Lerp(chroma.intensity.value, player.nitroActive ? 0.6f : 0f, Time.unscaledDeltaTime * 4f);
+            motionBlur.intensity.value = Mathf.Clamp01((kmh - 120f) / 200f) * 0.35f + (player.nitroActive ? 0.15f : 0f);
+        }
 
-            // minimap kamerası: araç yönü yukarı
-            if (mapCam != null)
+        void UpdateMapCams()
+        {
+            var t = player.transform;
+            mapCam.transform.position = t.position + Vector3.up * 300f;
+            mapCam.transform.rotation = Quaternion.Euler(90f, t.eulerAngles.y, 0f);
+            mapCam.orthographicSize = Mathf.Lerp(mapCam.orthographicSize, 120f + Mathf.Clamp01(player.SpeedKmh / 200f) * 80f, Time.unscaledDeltaTime);
+            mapRenderTimer -= Time.unscaledDeltaTime;
+            if (mapRenderTimer <= 0f && menu == Menu.None) { mapRenderTimer = 1f / 15f; mapCam.Render(); }
+            if (bigMapCam.enabled)
             {
-                mapCam.transform.position = t.position + Vector3.up * 200f;
-                mapCam.transform.rotation = Quaternion.Euler(90f, t.eulerAngles.y, 0f);
-                mapCam.orthographicSize = Mathf.Lerp(mapCam.orthographicSize, 110f + Mathf.Clamp01(kmh / 200f) * 70f, Time.deltaTime);
+                bigMapCam.transform.position = t.position + bigMapPan + Vector3.up * 500f;
+                bigMapCam.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+                bigMapCam.orthographicSize = bigMapZoom;
             }
         }
 
@@ -320,17 +527,19 @@ namespace MostWanted
             if (sfx != null) sfx.PlayOneShot(AudioSynth.Beep(high), 0.6f);
         }
 
-        void OnApplicationQuit()
+        public List<string> Credits()
         {
-            SaveSystem.Save();
+            var l = new List<string>();
+            l.Add("Most Wanted (Unity) — prosedürel oyun kodu, sesler ve test şehri");
+            l.Add("Araç paketi: \"Car Asset Pack for Arcade & Demolition Racing Games\" — Store InvoGames (Fab, Standard License)");
+            l.Add("Harita: \"City 3D Model\" — Optic Idealist (Fab), CC BY 4.0 lisansı");
+            var reg = Resources.Load<CarRegistry>("CarRegistry");
+            if (reg != null) foreach (var c in reg.cars) if (!string.IsNullOrEmpty(c.credit)) l.Add(c.displayName + ": " + c.credit);
+            var mreg = Resources.Load<MapRegistry>("MapRegistry");
+            if (mreg != null) foreach (var m in mreg.maps) if (!string.IsNullOrEmpty(m.credit)) l.Add(m.name + ": " + m.credit);
+            return l;
         }
-    }
 
-    /// <summary>Minimap kamerası render ederken sisi kapatır (Built-in pipeline).</summary>
-    public class MinimapCamera : MonoBehaviour
-    {
-        bool fog;
-        void OnPreRender() { fog = RenderSettings.fog; RenderSettings.fog = false; }
-        void OnPostRender() { RenderSettings.fog = fog; }
+        void OnApplicationQuit() { SaveSystem.Save(); }
     }
 }

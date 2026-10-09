@@ -4,65 +4,8 @@ using UnityEngine.Rendering;
 
 namespace MostWanted
 {
-    /// <summary>Yol ağı: kavşak düğümleri ve bağlantıları.</summary>
-    public class RoadGraph
-    {
-        public readonly List<Vector3> nodes = new List<Vector3>();
-        public readonly List<List<int>> adj = new List<List<int>>();
-
-        public int Add(Vector3 p) { nodes.Add(p); adj.Add(new List<int>()); return nodes.Count - 1; }
-
-        public void Link(int a, int b)
-        {
-            if (a == b || adj[a].Contains(b)) return;
-            adj[a].Add(b); adj[b].Add(a);
-        }
-
-        public int Nearest(Vector3 p)
-        {
-            int best = 0; float bd = float.MaxValue;
-            for (int i = 0; i < nodes.Count; i++)
-            {
-                float d = U.FlatDist(p, nodes[i]);
-                if (d < bd) { bd = d; best = i; }
-            }
-            return best;
-        }
-
-        public List<int> Path(int from, int to)
-        {
-            var prev = new int[nodes.Count];
-            for (int i = 0; i < prev.Length; i++) prev[i] = -2;
-            var q = new Queue<int>();
-            q.Enqueue(from); prev[from] = -1;
-            while (q.Count > 0)
-            {
-                int c = q.Dequeue();
-                if (c == to) break;
-                foreach (int n in adj[c]) if (prev[n] == -2) { prev[n] = c; q.Enqueue(n); }
-            }
-            var path = new List<int>();
-            if (prev[to] == -2) return path;
-            for (int c = to; c != -1; c = prev[c]) path.Add(c);
-            path.Reverse();
-            return path;
-        }
-
-        public int RandomNodeAround(Vector3 p, float minD, float maxD)
-        {
-            var list = new List<int>();
-            for (int i = 0; i < nodes.Count; i++)
-            {
-                float d = U.FlatDist(p, nodes[i]);
-                if (d >= minD && d <= maxD) list.Add(i);
-            }
-            if (list.Count == 0) return Random.Range(0, nodes.Count);
-            return list[Random.Range(0, list.Count)];
-        }
-    }
-
     /// <summary>Şehri prosedürel olarak kurar.</summary>
-    public class City
+    public class City : World
     {
         public const int N = 6;            // blok sayısı (her eksende)
         public const float B = 100f;       // grid aralığı
@@ -70,15 +13,13 @@ namespace MostWanted
         public const float Ring = 130f;    // çevre yolu uzaklığı
         public const float LaneOffset = 4.5f;
 
-        public RoadGraph graph = new RoadGraph();
         public int[,] grid = new int[N + 1, N + 1];
         public List<int> ringLoop = new List<int>();
-        public Transform root;
         public List<Material> buildingMats = new List<Material>();
         public List<Light> lampLights = new List<Light>();
         public Material lampHeadMat;
-        public Vector3 garagePos;
-        public Quaternion garageRot;
+        public List<Vector3> breakerSites = new List<Vector3>();
+        public List<int> breakerKinds = new List<int>();
 
         Material roadMat, sidewalkMat, lineMat, grassMat, parkMat;
         System.Random rnd = new System.Random(1234);
@@ -86,7 +27,7 @@ namespace MostWanted
 
         public float Size { get { return N * B; } }
 
-        public void Build()
+        public override void Build()
         {
             root = new GameObject("Sehir").transform;
             roadMat = U.Mat(new Color(0.16f, 0.16f, 0.17f), 0.15f);
@@ -107,6 +48,96 @@ namespace MostWanted
             BuildBlocks();
             BuildLamps();
             BuildOutskirts();
+            BuildHidingAndTunnel();
+            BuildRaces();
+            title = "Test Şehri";
+            area = new Bounds(new Vector3(Size / 2, 0, Size / 2), new Vector3(Size + Ring * 2 + 100, 50, Size + Ring * 2 + 100));
+            labels.Add(new KeyValuePair<string, Vector3>("Merkez", new Vector3(Size / 2, 0, Size / 2)));
+            labels.Add(new KeyValuePair<string, Vector3>("Garaj", garagePos));
+            labels.Add(new KeyValuePair<string, Vector3>("Çevre Yolu", new Vector3(Size / 2, 0, -Ring)));
+        }
+
+        // --- Saklanma noktaları (otopark), tünel, pursuit breaker yerleri ---
+        void BuildHidingAndTunnel()
+        {
+            var concrete = U.Mat(new Color(0.5f, 0.5f, 0.48f));
+            // Otoparklar: (2,2) ve (4,4) blokları
+            int[][] lots = { new[] { 2, 2 }, new[] { 4, 4 } };
+            foreach (var l in lots)
+            {
+                Vector3 c = new Vector3(l[0] * B + B / 2, 0, l[1] * B + B / 2);
+                float s = B - RoadW - 10f;
+                var g = new GameObject("Otopark").transform; g.SetParent(root, false); g.position = c;
+                U.Prim(PrimitiveType.Cube, "OtoparkTaban", g, new Vector3(0, 0.22f, 0), new Vector3(s + 8, 0.06f, s + 8), U.Mat(new Color(0.3f, 0.3f, 0.32f)));
+                U.Prim(PrimitiveType.Cube, "OtoparkCati", g, new Vector3(0, 5.2f, 0), new Vector3(s, 0.6f, s), concrete, true);
+                for (int x = -1; x <= 1; x++)
+                    for (int z = -1; z <= 1; z++)
+                    {
+                        if (x == 0 && z == 0) continue;
+                        U.Prim(PrimitiveType.Cube, "Kolon", g, new Vector3(x * s * 0.42f, 2.6f, z * s * 0.42f), new Vector3(0.8f, 5.2f, 0.8f), concrete, true);
+                    }
+                U.Text3D("OTOPARK", g, new Vector3(0, 6.2f, -s / 2 - 0.4f), Quaternion.identity, 3f, Color.white);
+                AddHiding("Otopark", c + Vector3.up * 2.5f, new Vector3(s, 5f, s));
+            }
+            // Tünel: grid (3,5)-(3,6) arası yol
+            Vector3 a = graph.nodes[grid[3, 5]], b = graph.nodes[grid[3, 6]];
+            Vector3 mid = (a + b) / 2;
+            float len = Vector3.Distance(a, b) - RoadW - 4f;
+            var t = new GameObject("Tunel").transform; t.SetParent(root, false); t.position = mid;
+            var wall = U.Mat(new Color(0.42f, 0.4f, 0.38f));
+            U.Prim(PrimitiveType.Cube, "TunelSol", t, new Vector3(-RoadW / 2 - 0.6f, 4f, 0), new Vector3(1.2f, 8f, len), wall, true);
+            U.Prim(PrimitiveType.Cube, "TunelSag", t, new Vector3(RoadW / 2 + 0.6f, 4f, 0), new Vector3(1.2f, 8f, len), wall, true);
+            U.Prim(PrimitiveType.Cube, "TunelTavan", t, new Vector3(0, 8.5f, 0), new Vector3(RoadW + 3.6f, 1f, len), wall, true);
+            U.Prim(PrimitiveType.Cube, "TunelToprak", t, new Vector3(0, 12f, 0), new Vector3(RoadW + 24f, 6f, len - 6f), U.Mat(new Color(0.25f, 0.38f, 0.2f)), true);
+            var lampMat = U.Emissive(new Color(1f, 0.9f, 0.7f), new Color(2f, 1.7f, 1.2f));
+            for (int k = -2; k <= 2; k++)
+            {
+                U.Prim(PrimitiveType.Cube, "TunelLamba", t, new Vector3(0, 7.95f, k * len / 5f), new Vector3(1.2f, 0.1f, 4f), lampMat);
+                var lg = new GameObject("TunelIsik"); lg.transform.SetParent(t, false); lg.transform.localPosition = new Vector3(0, 7f, k * len / 5f);
+                var li = lg.AddComponent<Light>(); li.type = LightType.Point; li.range = 22f; li.intensity = 2f; li.color = new Color(1f, 0.85f, 0.6f);
+            }
+            U.Text3D("TÜNEL", t, new Vector3(0, 10f, -len / 2 - 0.2f), Quaternion.identity, 3f, Color.white);
+            AddHiding("Tünel", mid + Vector3.up * 4f, new Vector3(RoadW, 8f, len));
+
+            // Pursuit breaker yerleri: blok köşeleri (yol kenarı), 0 = su kulesi, 1 = benzinlik tentesi
+            int[][] br = { new[] { 1, 3 }, new[] { 5, 2 }, new[] { 3, 1 }, new[] { 2, 5 }, new[] { 5, 5 } };
+            for (int k = 0; k < br.Length; k++)
+            {
+                Vector3 n = graph.nodes[grid[br[k][0], br[k][1]]];
+                breakerSites.Add(n + new Vector3(RoadW / 2 + 7f, 0.2f, RoadW / 2 + 7f));
+                breakerKinds.Add(k % 2);
+            }
+        }
+
+        void BuildRaces()
+        {
+            var G = grid;
+            races.Add(new RaceDef { name = "Liman Sprinti", type = RaceType.Sprint, prize = 3000, route = RouteFromNodes(Chain(G[0, 1], G[6, 1], G[6, 4], G[3, 4], G[3, 6]), false) });
+            races.Add(new RaceDef { name = "Merkez Turu", type = RaceType.Circuit, laps = 2, prize = 4500, route = RouteFromNodes(Loop(G[1, 1], G[4, 1], G[4, 4], G[1, 4]), true) });
+            races.Add(new RaceDef { name = "Çevre Yolu Kupası", type = RaceType.Circuit, laps = 1, prize = 8000, route = RouteFromNodes(new List<int>(ringLoop), true) });
+            var trap = new RaceDef { name = "Radar Avı", type = RaceType.Speedtrap, prize = 5000, route = RouteFromNodes(Chain(G[0, 5], G[6, 5], G[6, 2], G[0, 2]), false) };
+            trap.special.Add(3); trap.special.Add(8); trap.special.Add(14);
+            races.Add(trap);
+            var toll = new RaceDef { name = "Gişe Koşusu", type = RaceType.Tollbooth, prize = 4000, route = RouteFromNodes(Chain(G[5, 0], G[5, 6], G[2, 6], G[2, 0]), false) };
+            for (int i = 3; i < toll.route.Count; i += 3) toll.special.Add(i);
+            races.Add(toll);
+            // Drag: güney çevre yolu düz hattı (4 şerit)
+            var drag = new RaceDef { name = "Çevre Yolu Dragı", type = RaceType.Drag, prize = 3500 };
+            drag.route.Add(new Vector3(-Ring + 20f, 0, -Ring));
+            drag.route.Add(new Vector3(Size + Ring - 40f, 0, -Ring));
+            drag.dragLanes = new[] { -6.75f, -2.25f, 2.25f, 6.75f };
+            races.Add(drag);
+            races.Add(new RaceDef { name = "Gece Ekspresi", type = RaceType.Sprint, prize = 5500, route = RouteFromNodes(Chain(G[6, 6], G[6, 3], G[2, 3], G[2, 0], G[0, 0]), false) });
+        }
+
+        List<int> Loop(params int[] corners)
+        {
+            var c = new int[corners.Length + 1];
+            for (int i = 0; i < corners.Length; i++) c[i] = corners[i];
+            c[corners.Length] = corners[0];
+            var l = Chain(c);
+            l.RemoveAt(l.Count - 1);
+            return l;
         }
 
         void BuildGraph()
@@ -225,6 +256,8 @@ namespace MostWanted
                     U.Prim(PrimitiveType.Cube, "Kaldirim", blocks, c + Vector3.up * 0.1f, new Vector3(bs, 0.2f, bs), sidewalkMat, true);
 
                     bool garage = (i == 0 && j == 0);
+                    bool isLot = (i == 2 && j == 2) || (i == 4 && j == 4);
+                    if (isLot) continue;
                     bool park = !garage && (R01() < 0.12f);
                     if (park)
                     {
@@ -372,7 +405,6 @@ namespace MostWanted
             return Vector3.Distance(p, a + ab * t);
         }
 
-        /// <summary>Yön a→b için sağ şerit noktası.</summary>
         public static Vector3 LanePoint(Vector3 a, Vector3 b, Vector3 at, float offset)
         {
             Vector3 d = (b - a); d.y = 0; d.Normalize();
@@ -380,12 +412,31 @@ namespace MostWanted
             return at + right * offset;
         }
 
-        public void SetNight(float night)
+        public override void SetNight(float night)
         {
             foreach (var m in buildingMats) U.SetEmission(m, Color.white * (night * 1.3f));
             U.SetEmission(lampHeadMat, new Color(1f, 0.85f, 0.6f) * (0.2f + night * 2.5f));
-            bool on = night > 0.45f;
-            foreach (var l in lampLights) if (l.enabled != on) l.enabled = on;
+        }
+
+        /// <summary>Gece sadece oyuncuya yakın (≤160 m) sokak lambası ışıkları açık.</summary>
+        public void UpdateLampsNear(Vector3 p, float night)
+        {
+            bool nightOn = night > 0.45f;
+            foreach (var l in lampLights)
+            {
+                bool on = nightOn && U.FlatDist(l.transform.position, p) < 160f;
+                if (l.enabled != on) l.enabled = on;
+            }
+        }
+
+        /// <summary>Ağaç/lamba gibi detayları "Detay" katmanına taşı (kamera katman mesafesiyle erken kesilir).</summary>
+        public void MarkDetailLayers()
+        {
+            foreach (var r in root.GetComponentsInChildren<Renderer>())
+            {
+                string n = r.name;
+                if (n == "Agac" || n == "Yaprak" || n == "Lamba" || n == "LambaBas" || n == "Serit") r.gameObject.layer = OptimizationManager.DetailLayer;
+            }
         }
     }
 }

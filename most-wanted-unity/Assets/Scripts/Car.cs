@@ -1,189 +1,295 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 
 namespace MostWanted
 {
-    /// <summary>WheelCollider tabanlı arcade/drift araç fiziği. Girdiler sürücü bileşenlerinden gelir.</summary>
+    /// <summary>
+    /// Arcade-sim araç fiziği (NFS MW 2005 hissi): otomatik/manuel şanzıman, tork eğrisi, devir kesici,
+    /// nitro, el freni drift'i, güç ile savrulma (sürtünme çemberi), karşı direksiyon yardımı,
+    /// devrilme önleme (alçak ağırlık merkezi, kuvvet uygulama noktası, viraj demiri, otomatik doğrultma).
+    /// </summary>
     public class CarController : MonoBehaviour
     {
-        // Girdiler
-        public float throttle;   // -1..1
-        public float steer;      // -1..1
-        public bool handbrake;
-        public bool nitroInput;
-        public bool locked;
+        // ---- Girdiler ----
+        public float throttle, steer;
+        public bool handbrake, nitroInput, locked;
+        public bool isPlayer, manualGearbox;
 
-        // Ayarlar
-        public float maxTorque = 3000f;
-        public float maxSpeedKmh = 220f;
-        public float brakeTorque = 3500f;
-        public float maxSteer = 34f;
-        public float grip = 1f;
-        public float nitroCapacity = 1f;
-        public float nitroPower = 1f;
-        public float downforce = 2.5f;
-        public float antiRoll = 9000f;
-        public bool isPlayer;
+        // ---- Tanım ----
+        public CarEntry def;
+        public int[] tune = new int[Catalog.TuneCount];
+        public float peakTorque, redline, topSpeed, finalDrive, dragK, grip = 1f, brakeTorque, downforceK, maxSteer = 32f;
+        public float nitroCap = 1f, nitroPower = 1f, shiftTime = 0.28f, antiRoll, wheelRadius = 0.34f, wheelBase = 2.6f;
+        public int drive = 1;
+        public float stabilityAssist = 0.45f;
+        public float comHeight = 0.42f;
 
+        // ---- Durum ----
+        public int gear = 1;
+        public float rpm = CarMath.IdleRpm;
+        public bool revLimiter;
         public float nitro = 1f;
         public bool nitroActive;
+        public float health = 100f;
+        public bool disabled;
+        public float spikeTimer;
+        public float gripBoost = 1f, steerBoost = 1f;   // Speedbreaker
+        public float slipAngle, driftAmount;
+        public float lastShiftQuality;
+        public bool braking;
 
         public Rigidbody rb;
         public WheelCollider[] wheels = new WheelCollider[4]; // FL FR RL RR
         public Transform[] wheelVis = new Transform[4];
-        public Material bodyMat;
+        public List<Material> paintMats = new List<Material>();
+        public List<Material> brakeMats = new List<Material>();
+        public List<Material> headMats = new List<Material>();
+        public List<Transform> flames = new List<Transform>();
+        public ParticleSystem[] smoke = new ParticleSystem[2];
 
         public System.Action<Collision> onHit;
+        public System.Action<int, int> onShift; // vites, kalite (0 normal, 1 iyi, 2 mükemmel)
 
-        float curSteer;
-        float rearSide = 1.5f;
-        float flipTimer;
+        float curSteer, uprightTimer, shiftTimer, limiterT;
+        float[] sideStiff = { 1.4f, 1.4f, 1.35f, 1.35f };
+        float handbrakeBlend;
 
+        public bool TiresBlown { get { return spikeTimer > 0f; } }
+        public bool Shifting { get { return shiftTimer > 0f; } }
         public float SpeedKmh { get { return U.Vel(rb).magnitude * 3.6f; } }
         public float ForwardSpeed { get { return Vector3.Dot(U.Vel(rb), transform.forward); } }
+        public float Rpm01 { get { return Mathf.Clamp01(rpm / redline); } }
 
-        public float EngineRpm01
+        public void Configure(CarEntry d, int[] t)
         {
-            get
+            def = d;
+            if (t != null && t.Length == Catalog.TuneCount) tune = t;
+            float eng = 1f + 0.08f * tune[(int)Tune.Motor] + 0.06f * tune[(int)Tune.Turbo];
+            peakTorque = d.torqueNm * eng;
+            redline = d.redlineRpm;
+            topSpeed = d.topSpeedKmh * (1f + 0.012f * (tune[(int)Tune.Turbo] + tune[(int)Tune.Sanziman] + tune[(int)Tune.Motor]));
+            drive = Mathf.Clamp(d.drive, 0, 2);
+            grip = d.grip * (1f + 0.045f * tune[(int)Tune.Lastik] + 0.02f * tune[(int)Tune.Suspansiyon]);
+            shiftTime = 0.3f - 0.05f * tune[(int)Tune.Sanziman];
+            nitroCap = 1f + 0.25f * tune[(int)Tune.Nitro];
+            nitroPower = 1f + 0.1f * tune[(int)Tune.Nitro];
+            float m = rb.mass;
+            antiRoll = m * 9f * (1f + 0.15f * tune[(int)Tune.Suspansiyon]);
+            brakeTorque = m * CarMath.Gravity * wheelRadius * 0.42f * (1f + 0.12f * tune[(int)Tune.Fren]);
+            downforceK = 0.85f * d.downforce * (1f + 0.05f * tune[(int)Tune.Suspansiyon]);
+            finalDrive = CarMath.FinalDrive(topSpeed, redline, wheelRadius);
+            dragK = CarMath.DragCoef(peakTorque, topSpeed, redline, wheelRadius);
+
+            // süspansiyon: ~1.7 Hz, %40 sönüm
+            float corner = m / 4f;
+            float freq = 1.7f + 0.1f * tune[(int)Tune.Suspansiyon];
+            float k = corner * Mathf.Pow(2f * Mathf.PI * freq, 2f);
+            float c = 2f * 0.42f * Mathf.Sqrt(k * corner);
+            foreach (var w in wheels)
             {
-                float kmh = Mathf.Abs(ForwardSpeed) * 3.6f;
-                float span = maxSpeedKmh / 6f;
-                int gear = Mathf.Min(5, Mathf.FloorToInt(kmh / span));
-                return Mathf.Clamp01((kmh - gear * span) / span * 0.85f + 0.12f + gear * 0.02f);
+                if (w == null) continue;
+                w.suspensionSpring = new JointSpring { spring = k, damper = c, targetPosition = 0.5f };
             }
         }
-        public int Gear { get { return Mathf.Min(6, 1 + Mathf.FloorToInt(Mathf.Abs(ForwardSpeed) * 3.6f / (maxSpeedKmh / 6f))); } }
+
+        public void ShiftUp()
+        {
+            if (gear >= CarMath.Ratios.Length || Shifting || gear <= 0) return;
+            float x = rpm / redline;
+            int q = x >= 0.88f && x <= 0.98f ? 2 : x >= 0.76f ? 1 : 0;
+            lastShiftQuality = q;
+            gear++;
+            shiftTimer = manualGearbox ? (q == 2 ? 0.08f : q == 1 ? 0.18f : 0.35f) : shiftTime;
+            if (manualGearbox && q == 2) nitro = Mathf.Min(1f, nitro + 0.08f);
+            if (onShift != null) onShift(gear, q);
+        }
+
+        public void ShiftDown()
+        {
+            if (gear <= 1 || Shifting) return;
+            gear--;
+            shiftTimer = shiftTime * 0.6f;
+            if (onShift != null) onShift(gear, 0);
+        }
 
         void FixedUpdate()
         {
             if (rb == null || rb.isKinematic) return;
             float dt = Time.fixedDeltaTime;
-            float fwd = ForwardSpeed;
-            float kmh = Mathf.Abs(fwd) * 3.6f;
+            Vector3 v = U.Vel(rb);
+            float fwd = Vector3.Dot(v, transform.forward);
+            float kmh = v.magnitude * 3.6f;
+            if (spikeTimer > 0f) spikeTimer -= dt;
+            if (shiftTimer > 0f) shiftTimer -= dt;
 
-            if (locked)
+            if (locked || disabled)
             {
-                for (int i = 0; i < 4; i++) { wheels[i].motorTorque = 0; wheels[i].brakeTorque = brakeTorque * 2f; }
+                for (int i = 0; i < 4; i++) { wheels[i].motorTorque = 0f; wheels[i].brakeTorque = brakeTorque * 3f; }
+                // geri sayımda gaz -> devir (burnout hazırlığı)
+                rpm = Mathf.Lerp(rpm, CarMath.IdleRpm + Mathf.Max(0f, throttle) * (redline * 0.85f - CarMath.IdleRpm), dt * 6f);
+                nitroActive = false;
+                UpdateEffects(kmh, 0f);
                 return;
             }
 
-            // Hıza duyarlı direksiyon
-            float steerLimit = Mathf.Lerp(maxSteer, maxSteer * 0.3f, Mathf.Clamp01(kmh / 190f));
-            if (handbrake) steerLimit = Mathf.Max(steerLimit, maxSteer * 0.7f);
-            curSteer = Mathf.MoveTowards(curSteer, steer * steerLimit, 140f * dt);
+            Vector3 lv = transform.InverseTransformDirection(v);
+            slipAngle = kmh > 12f && lv.z > 0.5f ? Mathf.Atan2(lv.x, lv.z) * Mathf.Rad2Deg : 0f;
+            driftAmount = kmh > 40f ? Mathf.Abs(slipAngle) : 0f;
+
+            // ---- Direksiyon ----
+            float limit = CarMath.SteerLimit(kmh, maxSteer) * steerBoost;
+            if (handbrake) limit = Mathf.Max(limit, maxSteer * 0.6f);
+            float target = steer * limit;
+            // karşı direksiyon yardımı
+            if (Mathf.Abs(slipAngle) > 4f) target += Mathf.Clamp(slipAngle * 0.55f, -maxSteer * 0.6f, maxSteer * 0.6f);
+            target = Mathf.Clamp(target, -maxSteer, maxSteer);
+            curSteer = Mathf.MoveTowards(curSteer, target, (90f + kmh * 0.4f) * dt);
             wheels[0].steerAngle = curSteer;
             wheels[1].steerAngle = curSteer;
 
-            float motor = 0f, brake = 0f;
-            if (throttle > 0.05f)
+            // ---- Şanzıman ----
+            if (throttle < -0.05f && fwd < 1f && gear > 0) { gear = 0; shiftTimer = 0.2f; }
+            if (throttle > 0.05f && gear == 0 && fwd > -1f) { gear = 1; shiftTimer = 0.15f; }
+            float speedRpm = CarMath.EngineRpm(fwd, gear, finalDrive, wheelRadius);
+            float wheelRpm = 0f; int nd = 0;
+            for (int i = 0; i < 4; i++) if (IsDriven(i)) { wheelRpm += Mathf.Abs(wheels[i].rpm); nd++; }
+            wheelRpm = nd > 0 ? wheelRpm / nd : 0f;
+            float r = gear <= 0 ? CarMath.ReverseRatio : CarMath.Ratios[gear - 1];
+            float spinRpm = wheelRpm * r * finalDrive;
+            float target_rpm = Mathf.Max(speedRpm, Mathf.Min(spinRpm, redline * 1.05f));
+            if (gear == 1 && kmh < 25f) target_rpm = Mathf.Max(target_rpm, CarMath.IdleRpm + Mathf.Abs(throttle) * redline * 0.55f); // debriyaj kaydırma
+            target_rpm = Mathf.Max(CarMath.IdleRpm, target_rpm);
+            rpm = Mathf.Lerp(rpm, Mathf.Min(target_rpm, redline * 1.02f), dt * 12f);
+
+            if (!manualGearbox && gear > 0 && !Shifting)
             {
-                if (fwd < -1.5f) brake = brakeTorque * throttle; else motor = throttle;
+                if (rpm > redline * 0.96f && gear < CarMath.Ratios.Length && throttle > 0.1f && GroundedCount() >= 2) ShiftUp();
+                else if (gear > 1 && rpm < redline * 0.45f) ShiftDown();
             }
-            else if (throttle < -0.05f)
+
+            // ---- Tork ----
+            float thAbs = Mathf.Abs(throttle);
+            float wantDir = gear == 0 ? -1f : 1f;
+            bool accelerating = (gear > 0 && throttle > 0.05f) || (gear == 0 && throttle < -0.05f);
+            float engT = 0f;
+            revLimiter = rpm >= redline * 0.995f;
+            if (accelerating && !Shifting)
             {
-                if (fwd > 1.5f) brake = brakeTorque * -throttle; else motor = throttle * 0.6f;
+                engT = peakTorque * CarMath.TorqueCurve(rpm / redline) * thAbs;
+                if (revLimiter) { limiterT += dt; if (Mathf.Repeat(limiterT, 0.1f) < 0.05f) engT = 0f; }
+                if (gear == 0 && kmh > 40f) engT = 0f;
+            }
+            float topNow = topSpeed * (TiresBlown ? 0.55f : 1f);
+
+            nitroActive = nitroInput && nitro > 0.01f && throttle > 0.1f && gear > 0 && !handbrake;
+            if (nitroActive)
+            {
+                nitro = Mathf.Max(0f, nitro - dt / (3.2f * nitroCap));
+                engT *= 1f + 0.35f * nitroPower;
+                topNow *= 1.12f;
             }
 
-            nitroActive = nitroInput && nitro > 0.01f && throttle > 0.1f && !handbrake;
-            if (nitroActive) nitro = Mathf.Max(0f, nitro - dt / (3.5f * nitroCapacity));
-            else nitro = Mathf.Min(1f, nitro + dt * (isPlayer ? 0.035f : 0.08f));
+            float wheelT = engT * r * finalDrive * CarMath.Efficiency * wantDir;
+            if (kmh > topNow) wheelT = 0f;
+            float fShare = drive == 0 ? 0.5f : drive == 1 ? 0f : 0.2f;   // 4x4: %40 ön
+            float rShare = drive == 0 ? 0f : drive == 1 ? 0.5f : 0.3f;
+            wheels[0].motorTorque = wheels[1].motorTorque = wheelT * fShare;
+            wheels[2].motorTorque = wheels[3].motorTorque = wheelT * rShare;
 
-            float top = maxSpeedKmh * (nitroActive ? 1.15f : 1f);
-            float sf = Mathf.Clamp01(kmh / top);
-            float torque = maxTorque * (nitroActive ? 1.6f : 1f) * (1f - sf * sf * sf);
-            if (motor < 0 && kmh > 45f) torque = 0f;
-            float mt = motor * torque;
-
-            wheels[0].motorTorque = mt * 0.15f;
-            wheels[1].motorTorque = mt * 0.15f;
-            wheels[2].motorTorque = mt * 0.35f;
-            wheels[3].motorTorque = mt * 0.35f;
-
-            for (int i = 0; i < 4; i++) wheels[i].brakeTorque = brake;
+            // ---- Fren ----
+            float brk = 0f;
+            braking = false;
+            if (gear > 0 && throttle < -0.05f && fwd > 1f) { brk = brakeTorque * -throttle; braking = true; }
+            if (gear == 0 && throttle > 0.05f && fwd < -1f) { brk = brakeTorque * throttle; braking = true; }
+            if (thAbs < 0.05f) brk = brakeTorque * 0.04f; // motor freni
+            wheels[0].brakeTorque = wheels[1].brakeTorque = brk * 1.2f;
+            wheels[2].brakeTorque = wheels[3].brakeTorque = brk * 0.8f;
             if (handbrake)
             {
-                wheels[2].brakeTorque = Mathf.Max(brake, brakeTorque * 0.6f);
-                wheels[3].brakeTorque = Mathf.Max(brake, brakeTorque * 0.6f);
-            }
-            if (Mathf.Abs(throttle) < 0.05f && !handbrake)
-            {
-                // motor freni
-                for (int i = 0; i < 4; i++) wheels[i].brakeTorque = Mathf.Max(wheels[i].brakeTorque, 60f);
+                wheels[2].brakeTorque = wheels[3].brakeTorque = brakeTorque * 1.6f;
+                wheels[2].motorTorque = wheels[3].motorTorque = 0f;
             }
 
-            // Sürtünme: el freninde arka yanal tutuş düşer (drift)
-            float targetRear = handbrake ? 0.55f : 1.55f;
-            rearSide = Mathf.MoveTowards(rearSide, targetRear, dt * (handbrake ? 6f : 1.8f));
-            SetStiffness(0, 1.7f * grip, 1.6f * grip);
-            SetStiffness(1, 1.7f * grip, 1.6f * grip);
-            SetStiffness(2, rearSide * grip, 1.6f * grip);
-            SetStiffness(3, rearSide * grip, 1.6f * grip);
-
-            bool grounded = false;
-            for (int i = 0; i < 4; i++) if (wheels[i].isGrounded) grounded = true;
-
-            Vector3 v = U.Vel(rb);
-            if (grounded)
+            // ---- Sürtünme (el freni drift + sürtünme çemberi) ----
+            handbrakeBlend = Mathf.MoveTowards(handbrakeBlend, handbrake ? 1f : 0f, dt * (handbrake ? 6f : 1.6f));
+            float g = grip * gripBoost * (TiresBlown ? 0.5f : 1f);
+            for (int i = 0; i < 4; i++)
             {
-                // downforce
-                rb.AddForce(-transform.up * downforce * v.sqrMagnitude);
-                // nitro itişi
-                if (nitroActive) rb.AddForce(transform.forward * rb.mass * 6.5f * nitroPower);
-                // drift yardımı: el freni + direksiyon -> dönüş momenti
-                if (handbrake && kmh > 25f)
-                    rb.AddTorque(Vector3.up * steer * rb.mass * 1.6f, ForceMode.Force);
-                // drift sırasında hız kaybını azalt (Most Wanted hissi)
-                float lateral = Vector3.Dot(v, transform.right);
-                if (!handbrake && Mathf.Abs(lateral) > 2f && throttle > 0.1f)
-                    rb.AddForce(transform.forward * Mathf.Abs(lateral) * rb.mass * 0.25f);
+                float side = sideStiff[i] * g;
+                if (i >= 2) side *= Mathf.Lerp(1f, 0.42f, handbrakeBlend);
+                WheelHit hit;
+                if (wheels[i].GetGroundHit(out hit))
+                {
+                    float fs = Mathf.Abs(hit.forwardSlip);
+                    if (fs > 0.35f) side *= Mathf.Clamp(1f - (fs - 0.35f) * 0.9f, 0.45f, 1f); // patinajda yanal tutuş düşer -> güçle savrulma
+                }
+                var sf = wheels[i].sidewaysFriction; sf.stiffness = side; wheels[i].sidewaysFriction = sf;
+                var ff = wheels[i].forwardFriction; ff.stiffness = 1.5f * g; wheels[i].forwardFriction = ff;
+            }
+
+            int grounded = GroundedCount();
+            if (grounded > 0)
+            {
+                // downforce & aerodinamik sürükleme & yuvarlanma direnci
+                rb.AddForce(-transform.up * downforceK * v.sqrMagnitude);
+                Vector3 flat = U.Flat(v);
+                rb.AddForce(-flat.normalized * dragK * flat.sqrMagnitude);
+                if (flat.sqrMagnitude > 0.25f) rb.AddForce(-flat.normalized * rb.mass * CarMath.RollingDecel);
+                if (nitroActive) rb.AddForce(transform.forward * rb.mass * 2.6f * nitroPower);
+
+                // drift'te hız koru (arcade)
+                if (Mathf.Abs(slipAngle) > 10f && throttle > 0.1f && kmh > 35f)
+                    rb.AddForce(transform.forward * rb.mass * 2.2f * Mathf.Sin(Mathf.Abs(slipAngle) * Mathf.Deg2Rad));
+                // el freninde dönüş yardımı
+                if (handbrake && kmh > 25f) rb.AddTorque(Vector3.up * steer * rb.mass * 1.4f);
+
+                // savrulma kararlılık yardımı (el freni yokken aşırı dönüşü sönümle)
+                if (!handbrake && kmh > 20f)
+                {
+                    float desiredYaw = fwd * Mathf.Tan(curSteer * Mathf.Deg2Rad) / wheelBase;
+                    float yaw = rb.angularVelocity.y;
+                    float excess = yaw - desiredYaw;
+                    if (Mathf.Abs(excess) > 0.25f)
+                        rb.AddTorque(Vector3.up * -excess * rb.inertiaTensor.y * stabilityAssist * 4f);
+                }
             }
             else
             {
-                // havada dengele
                 Vector3 av = rb.angularVelocity;
-                rb.angularVelocity = new Vector3(av.x * 0.97f, av.y, av.z * 0.97f);
+                rb.angularVelocity = new Vector3(av.x * 0.96f, av.y, av.z * 0.96f);
             }
 
             AntiRoll(0, 1);
             AntiRoll(2, 3);
 
-            // hız sınırı
-            float limit = top / 3.6f * 1.05f;
-            if (v.magnitude > limit) U.SetVel(rb, v.normalized * limit);
+            // aşırı yatmayı sınırla
+            float roll = Vector3.SignedAngle(Vector3.ProjectOnPlane(Vector3.up, transform.forward), transform.up, transform.forward);
+            if (Mathf.Abs(roll) > 18f && grounded < 4)
+                rb.AddTorque(transform.forward * -Mathf.Sign(roll) * (Mathf.Abs(roll) - 18f) * rb.mass * 0.6f);
 
-            // takla kurtarma
-            if (transform.up.y < 0.3f && kmh < 8f)
+            // sert hız sınırı
+            float hard = topNow / 3.6f * 1.08f;
+            if (v.magnitude > hard) U.SetVel(rb, v.normalized * hard);
+
+            // otomatik doğrultma: 60°'den fazla yatık 1.5 sn
+            if (Vector3.Angle(transform.up, Vector3.up) > 60f)
             {
-                flipTimer += dt;
-                if (flipTimer > 2.5f) Unflip();
+                uprightTimer += dt;
+                if (uprightTimer > 1.5f) Unflip();
             }
-            else flipTimer = 0f;
+            else uprightTimer = 0f;
+
+            UpdateEffects(kmh, Mathf.Abs(slipAngle));
         }
 
-        public void Unflip()
-        {
-            flipTimer = 0f;
-            Vector3 f = U.Flat(transform.forward);
-            if (f.sqrMagnitude < 0.01f) f = Vector3.forward;
-            transform.position += Vector3.up * 1.5f;
-            transform.rotation = Quaternion.LookRotation(f.normalized, Vector3.up);
-            U.SetVel(rb, Vector3.zero);
-            rb.angularVelocity = Vector3.zero;
-        }
+        bool IsDriven(int i) { return drive == 2 || (drive == 0 ? i < 2 : i >= 2); }
 
-        public void Teleport(Vector3 pos, Quaternion rot)
+        int GroundedCount()
         {
-            rb.position = pos;
-            rb.rotation = rot;
-            transform.SetPositionAndRotation(pos, rot);
-            U.SetVel(rb, Vector3.zero);
-            rb.angularVelocity = Vector3.zero;
-        }
-
-        void SetStiffness(int i, float side, float fwd)
-        {
-            var s = wheels[i].sidewaysFriction; s.stiffness = side; wheels[i].sidewaysFriction = s;
-            var f = wheels[i].forwardFriction; f.stiffness = fwd; wheels[i].forwardFriction = f;
+            int n = 0;
+            for (int i = 0; i < 4; i++) if (wheels[i].isGrounded) n++;
+            return n;
         }
 
         void AntiRoll(int l, int r)
@@ -200,6 +306,51 @@ namespace MostWanted
             if (gr) rb.AddForceAtPosition(wr.transform.up * force, wr.transform.position);
         }
 
+        public void Unflip()
+        {
+            uprightTimer = 0f;
+            Vector3 f = U.Flat(transform.forward);
+            if (f.sqrMagnitude < 0.01f) f = Vector3.forward;
+            Teleport(transform.position + Vector3.up * 1.2f, Quaternion.LookRotation(f.normalized, Vector3.up));
+        }
+
+        public void Teleport(Vector3 pos, Quaternion rot)
+        {
+            bool k = rb.isKinematic;
+            rb.position = pos;
+            rb.rotation = rot;
+            transform.SetPositionAndRotation(pos, rot);
+            if (!k) { U.SetVel(rb, Vector3.zero); rb.angularVelocity = Vector3.zero; }
+            gear = 1; rpm = CarMath.IdleRpm;
+        }
+
+        public void SetSpeed(float kmh)
+        {
+            if (!rb.isKinematic) U.SetVel(rb, transform.forward * kmh / 3.6f);
+        }
+
+        void UpdateEffects(float kmh, float slip)
+        {
+            // nitro alevi
+            for (int i = 0; i < flames.Count; i++)
+            {
+                var f = flames[i];
+                if (f == null) continue;
+                bool on = nitroActive;
+                if (f.gameObject.activeSelf != on) f.gameObject.SetActive(on);
+                if (on) f.localScale = new Vector3(0.13f, 0.13f, Random.Range(0.5f, 0.95f));
+            }
+            // lastik dumanı
+            bool burn = (gear == 1 && throttle > 0.8f && kmh < 30f && peakTorque > 300f && GroundedCount() >= 2 && !locked);
+            bool smokeOn = (slip > 14f && kmh > 30f) || (handbrake && kmh > 25f) || burn;
+            for (int i = 0; i < smoke.Length; i++)
+            {
+                if (smoke[i] == null) continue;
+                var em = smoke[i].emission;
+                em.rateOverTime = smokeOn ? 40f : 0f;
+            }
+        }
+
         void LateUpdate()
         {
             for (int i = 0; i < 4; i++)
@@ -209,6 +360,8 @@ namespace MostWanted
                 wheels[i].GetWorldPose(out p, out q);
                 wheelVis[i].SetPositionAndRotation(p, q);
             }
+            float b = braking || handbrake ? 3f : 0.6f;
+            foreach (var m in brakeMats) U.SetEmission(m, new Color(1f, 0.05f, 0.03f) * b);
         }
 
         void OnCollisionEnter(Collision c)
@@ -216,134 +369,21 @@ namespace MostWanted
             if (onHit != null) onHit(c);
         }
 
-        public void SetColor(Color c)
+        public void Damage(float amount)
         {
-            if (bodyMat != null) bodyMat.color = c;
-        }
-    }
-
-    public enum CarRole { Player, Traffic, Police, Racer }
-
-    public static class CarFactory
-    {
-        public static CarController Build(CarSpec s, Color color, Vector3 pos, Quaternion rot, CarRole role, string name)
-        {
-            var go = new GameObject(name);
-            go.transform.SetPositionAndRotation(pos, rot);
-
-            var rb = go.AddComponent<Rigidbody>();
-            rb.mass = s.mass;
-            U.SetDamping(rb, 0.02f, 0.3f);
-            rb.interpolation = RigidbodyInterpolation.Interpolate;
-            rb.collisionDetectionMode = role == CarRole.Player ? CollisionDetectionMode.ContinuousDynamic : CollisionDetectionMode.Discrete;
-
-            float W = s.width, L = s.length;
-            var body = go.AddComponent<BoxCollider>();
-            body.center = new Vector3(0, 0.78f, 0);
-            body.size = new Vector3(W, 0.66f, L);
-            var cab = go.AddComponent<BoxCollider>();
-            cab.center = new Vector3(0, 1.3f, -0.15f);
-            cab.size = new Vector3(W * 0.8f, 0.45f, L * 0.48f);
-
-            rb.centerOfMass = new Vector3(0, 0.42f, 0.05f);
-
-            var car = go.AddComponent<CarController>();
-            car.rb = rb;
-            car.isPlayer = role == CarRole.Player;
-            car.maxTorque = s.torque;
-            car.maxSpeedKmh = s.maxSpeed;
-            car.grip = s.grip;
-            car.nitroCapacity = s.nitroCap;
-            car.brakeTorque = s.mass * 2.8f;
-
-            // Görsel
-            var vis = new GameObject("Gorsel").transform;
-            vis.SetParent(go.transform, false);
-            car.bodyMat = U.NewMat(color, 0.85f, 0.45f);
-            var glass = U.Mat(new Color(0.05f, 0.07f, 0.1f), 0.95f, 0.2f);
-            var dark = U.Mat(new Color(0.06f, 0.06f, 0.06f), 0.3f);
-            U.Prim(PrimitiveType.Cube, "Govde", vis, new Vector3(0, 0.78f, 0), new Vector3(W, s.height, L), car.bodyMat);
-            U.Prim(PrimitiveType.Cube, "Burun", vis, new Vector3(0, 0.62f + s.height * 0.5f, L * 0.32f), new Vector3(W * 0.96f, 0.08f, L * 0.3f), car.bodyMat);
-            U.Prim(PrimitiveType.Cube, "Kabin", vis, new Vector3(0, 0.78f + s.height * 0.5f + 0.22f, -0.15f), new Vector3(W * 0.8f, 0.44f, L * 0.46f), glass);
-            U.Prim(PrimitiveType.Cube, "Tampon", vis, new Vector3(0, 0.55f, L * 0.5f), new Vector3(W * 1.01f, 0.22f, 0.12f), dark);
-            U.Prim(PrimitiveType.Cube, "ArkaTampon", vis, new Vector3(0, 0.55f, -L * 0.5f), new Vector3(W * 1.01f, 0.22f, 0.12f), dark);
-            if (s.spoiler)
-            {
-                U.Prim(PrimitiveType.Cube, "Spoiler", vis, new Vector3(0, 1.35f, -L * 0.47f), new Vector3(W * 0.9f, 0.06f, 0.35f), dark);
-                U.Prim(PrimitiveType.Cube, "SpoilerA", vis, new Vector3(W * 0.3f, 1.2f, -L * 0.47f), new Vector3(0.08f, 0.3f, 0.2f), dark);
-                U.Prim(PrimitiveType.Cube, "SpoilerB", vis, new Vector3(-W * 0.3f, 1.2f, -L * 0.47f), new Vector3(0.08f, 0.3f, 0.2f), dark);
-            }
-            var head = U.Emissive(Color.white, new Color(2f, 2f, 1.8f));
-            var tail = U.Emissive(new Color(0.5f, 0, 0), new Color(1.6f, 0f, 0f));
-            U.Prim(PrimitiveType.Cube, "FarL", vis, new Vector3(-W * 0.35f, 0.82f, L * 0.5f), new Vector3(0.4f, 0.14f, 0.06f), head);
-            U.Prim(PrimitiveType.Cube, "FarR", vis, new Vector3(W * 0.35f, 0.82f, L * 0.5f), new Vector3(0.4f, 0.14f, 0.06f), head);
-            U.Prim(PrimitiveType.Cube, "StopL", vis, new Vector3(-W * 0.36f, 0.85f, -L * 0.5f), new Vector3(0.45f, 0.12f, 0.06f), tail);
-            U.Prim(PrimitiveType.Cube, "StopR", vis, new Vector3(W * 0.36f, 0.85f, -L * 0.5f), new Vector3(0.45f, 0.12f, 0.06f), tail);
-
-            // Tekerlekler
-            float r = 0.36f;
-            Vector3[] wp =
-            {
-                new Vector3(-W / 2 + 0.2f, 0.5f, L / 2 - 0.8f), new Vector3(W / 2 - 0.2f, 0.5f, L / 2 - 0.8f),
-                new Vector3(-W / 2 + 0.2f, 0.5f, -L / 2 + 0.8f), new Vector3(W / 2 - 0.2f, 0.5f, -L / 2 + 0.8f)
-            };
-            string[] wn = { "FL", "FR", "RL", "RR" };
-            var tire = U.Mat(new Color(0.05f, 0.05f, 0.05f), 0.1f);
-            var rim = U.Mat(new Color(0.7f, 0.7f, 0.75f), 0.8f, 0.9f);
-            for (int i = 0; i < 4; i++)
-            {
-                var wgo = new GameObject("WC_" + wn[i]);
-                wgo.transform.SetParent(go.transform, false);
-                wgo.transform.localPosition = wp[i];
-                var wc = wgo.AddComponent<WheelCollider>();
-                wc.radius = r;
-                wc.mass = 20f;
-                wc.suspensionDistance = 0.22f;
-                wc.forceAppPointDistance = 0.1f;
-                var sp = new JointSpring { spring = s.mass * 28f, damper = s.mass * 3.2f, targetPosition = 0.45f };
-                wc.suspensionSpring = sp;
-                wc.forwardFriction = new WheelFrictionCurve { extremumSlip = 0.4f, extremumValue = 1f, asymptoteSlip = 0.8f, asymptoteValue = 0.6f, stiffness = 1.6f };
-                wc.sidewaysFriction = new WheelFrictionCurve { extremumSlip = 0.25f, extremumValue = 1f, asymptoteSlip = 0.6f, asymptoteValue = 0.75f, stiffness = 1.6f };
-                if (i == 0) wc.ConfigureVehicleSubsteps(5f, 12, 15);
-                car.wheels[i] = wc;
-
-                var pivot = new GameObject("Teker_" + wn[i]).transform;
-                pivot.SetParent(go.transform, false);
-                pivot.localPosition = wp[i];
-                var t = U.Prim(PrimitiveType.Cylinder, "Lastik", pivot, Vector3.zero, new Vector3(r * 2, 0.13f, r * 2), tire);
-                t.transform.localRotation = Quaternion.Euler(0, 0, 90);
-                var rm = U.Prim(PrimitiveType.Cylinder, "Jant", pivot, new Vector3(i % 2 == 0 ? -0.02f : 0.02f, 0, 0), new Vector3(r * 1.3f, 0.135f, r * 1.3f), rim);
-                rm.transform.localRotation = Quaternion.Euler(0, 0, 90);
-                car.wheelVis[i] = pivot;
-            }
-
-            Color ic = role == CarRole.Player ? new Color(1f, 0.9f, 0f) : role == CarRole.Police ? new Color(1f, 0.1f, 0.1f) :
-                       role == CarRole.Racer ? new Color(1f, 0.4f, 1f) : new Color(0.7f, 0.7f, 0.7f);
-            U.Icon(go.transform, ic, role == CarRole.Player ? 9f : 6f, true);
-
-            return car;
+            if (disabled) return;
+            health -= amount;
+            if (health <= 0f) { health = 0f; disabled = true; }
         }
 
-        public static void ApplyTuning(CarController car, CarSpec s, CarSave save)
+        public void SetPaint(Color c)
         {
-            car.maxTorque = s.torque * (1f + 0.14f * save.engine);
-            car.maxSpeedKmh = s.maxSpeed * (1f + 0.05f * save.engine);
-            car.nitroCapacity = s.nitroCap * (1f + 0.3f * save.nitro);
-            car.nitroPower = 1f + 0.12f * save.nitro;
-            car.grip = s.grip * (1f + 0.07f * save.handling);
-            car.maxSteer = 34f + 2f * save.handling;
+            foreach (var m in paintMats) U.SetColor(m, c);
         }
 
-        public static CarController BuildPolice(Vector3 pos, Quaternion rot)
+        public void SetHeadlights(bool on)
         {
-            var car = Build(Catalog.Police, new Color(0.05f, 0.05f, 0.07f), pos, rot, CarRole.Police, "Polis");
-            var vis = car.transform.Find("Gorsel");
-            var white = U.Mat(Color.white, 0.8f, 0.3f);
-            var s = Catalog.Police;
-            U.Prim(PrimitiveType.Cube, "KapiL", vis, new Vector3(-s.width / 2 - 0.005f, 0.8f, 0), new Vector3(0.02f, 0.4f, s.length * 0.45f), white);
-            U.Prim(PrimitiveType.Cube, "KapiR", vis, new Vector3(s.width / 2 + 0.005f, 0.8f, 0), new Vector3(0.02f, 0.4f, s.length * 0.45f), white);
-            car.gameObject.AddComponent<PoliceLights>().Setup(vis);
-            return car;
+            foreach (var m in headMats) U.SetEmission(m, on ? new Color(2.5f, 2.4f, 2.1f) : new Color(0.4f, 0.4f, 0.38f));
         }
     }
 
@@ -356,24 +396,27 @@ namespace MostWanted
         AudioSource siren;
         float t;
 
-        public void Setup(Transform vis)
+        public void Setup(Transform vis, float roofY, bool hidden)
         {
             red = U.NewMat(new Color(0.4f, 0, 0)); blue = U.NewMat(new Color(0, 0, 0.4f));
-            var bar = U.Prim(PrimitiveType.Cube, "TepeLamba", vis, new Vector3(0, 1.6f, -0.1f), new Vector3(1.2f, 0.12f, 0.3f), U.Mat(Color.gray));
-            U.Prim(PrimitiveType.Cube, "Kirmizi", vis, new Vector3(-0.35f, 1.68f, -0.1f), new Vector3(0.5f, 0.14f, 0.28f), red).GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
-            U.Prim(PrimitiveType.Cube, "Mavi", vis, new Vector3(0.35f, 1.68f, -0.1f), new Vector3(0.5f, 0.14f, 0.28f), blue).GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
-            bar.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
-            lr = MakeLight(vis, new Vector3(-0.5f, 2.1f, 0), Color.red);
-            lb = MakeLight(vis, new Vector3(0.5f, 2.1f, 0), new Color(0.1f, 0.3f, 1f));
+            float y = hidden ? roofY - 0.35f : roofY + 0.08f;
+            float z = hidden ? 0.4f : -0.1f;
+            float w = hidden ? 0.25f : 0.5f;
+            if (!hidden)
+                U.Prim(PrimitiveType.Cube, "TepeLamba", vis, new Vector3(0, roofY + 0.02f, z), new Vector3(1.25f, 0.1f, 0.3f), U.Mat(new Color(0.15f, 0.15f, 0.15f))).GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
+            U.Prim(PrimitiveType.Cube, "Kirmizi", vis, new Vector3(-0.32f, y, z), new Vector3(w, 0.12f, 0.26f), red).GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
+            U.Prim(PrimitiveType.Cube, "Mavi", vis, new Vector3(0.32f, y, z), new Vector3(w, 0.12f, 0.26f), blue).GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
+            lr = MakeLight(vis, new Vector3(-0.5f, roofY + 0.5f, 0), Color.red);
+            lb = MakeLight(vis, new Vector3(0.5f, roofY + 0.5f, 0), new Color(0.1f, 0.3f, 1f));
             siren = gameObject.AddComponent<AudioSource>();
             siren.clip = AudioSynth.Siren();
             siren.loop = true;
             siren.spatialBlend = 1f;
             siren.minDistance = 12f;
-            siren.maxDistance = 220f;
+            siren.maxDistance = 250f;
             siren.rolloffMode = AudioRolloffMode.Linear;
-            siren.volume = 0.45f;
-            siren.dopplerLevel = 0.4f;
+            siren.volume = 0.4f;
+            siren.dopplerLevel = 0.5f;
         }
 
         Light MakeLight(Transform p, Vector3 lp, Color c)
@@ -382,7 +425,7 @@ namespace MostWanted
             g.transform.SetParent(p, false);
             g.transform.localPosition = lp;
             var l = g.AddComponent<Light>();
-            l.type = LightType.Point; l.color = c; l.range = 18f; l.intensity = 3f; l.shadows = LightShadows.None;
+            l.type = LightType.Point; l.color = c; l.range = 16f; l.intensity = 4f; l.shadows = LightShadows.None;
             l.enabled = false;
             return l;
         }
@@ -390,13 +433,15 @@ namespace MostWanted
         void Update()
         {
             if (red == null) return;
-            if (on)
+            var car = GetComponent<CarController>();
+            bool active = on && (car == null || !car.disabled);
+            if (active)
             {
                 t += Time.deltaTime;
                 bool phase = Mathf.Repeat(t, 0.5f) < 0.25f;
                 bool strobe = Mathf.Repeat(t, 0.125f) < 0.08f;
-                U.SetEmission(red, phase && strobe ? new Color(6f, 0, 0) : Color.black);
-                U.SetEmission(blue, !phase && strobe ? new Color(0, 0.6f, 6f) : Color.black);
+                U.SetEmission(red, phase && strobe ? new Color(8f, 0, 0) : Color.black);
+                U.SetEmission(blue, !phase && strobe ? new Color(0, 0.8f, 8f) : Color.black);
                 lr.enabled = phase; lb.enabled = !phase;
                 if (!siren.isPlaying) siren.Play();
             }

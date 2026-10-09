@@ -9,3 +9,9 @@ Builds/
 *.sln
 Assets/Store InvoGames/
 Assets/Store InvoGames.meta
+Assets/Maps/
+Assets/Maps.meta
+Assets/Resources/CarRegistry.asset
+Assets/Resources/CarRegistry.asset.meta
+Assets/Resources/MapRegistry.asset
+Assets/Resources/MapRegistry.asset.meta

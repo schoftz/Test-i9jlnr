@@ -1,78 +1,148 @@
-# Most Wanted – Açık Dünya Sokak Yarışı (Unity)
+# Most Wanted – Açık Dünya Sokak Yarışı (Unity 6 + URP)
 
-Need for Speed: Most Wanted tarzında, tamamen kodla üretilen bir açık dünya sokak yarışı oyunu.
-**Sahne kurmana gerek yok:** Projeyi aç, Play'e bas – şehir, arabalar, polis, ışıklar, sesler ve arayüz
-çalışma anında otomatik oluşturulur. Hiçbir dış model/doku/ses dosyası yoktur.
+Need for Speed: Most Wanted (2005) tarzında açık dünya sokak yarışı. **Sahne kurmana gerek yok:** projeyi aç,
+Play'e bas. Oyun her şeyi (dünya, araçlar, polis, arayüz) çalışma anında kendisi kurar.
+
+- Motor: **Unity 6 (6000.6.x)**, **URP** (Universal Render Pipeline)
+- Araçlar: InvoGames araç paketi (10 araç) varsa onları kullanır, yoksa prosedürel yedek araçlar
+- Harita: `city_3d_model.glb` (Optic Idealist) varsa onu, yoksa prosedürel test şehrini kullanır
+
+---
 
 ## 1. Kurulum (MacBook)
 
-1. **Unity Hub'ı indir:** https://unity.com/download adresinden macOS için Unity Hub'ı indir,
-   `.dmg` dosyasını aç ve Unity Hub'ı *Applications* klasörüne sürükle.
-2. Unity Hub'ı aç, Unity hesabınla giriş yap (ücretsiz *Personal* lisans yeterli).
-3. **Installs → Install Editor** bölümünden **Unity 2022.3 LTS** (önerilen) ya da **Unity 6** sürümünü kur.
-   Apple Silicon (M1/M2/M3/M4) Mac'lerde "Apple silicon" sürümünü seç. Ek modül gerekmez.
-4. **Projects → Add → Add project from disk** ile bu klasörü (`most-wanted-unity`) seç.
-   - Sürüm farkı uyarısı çıkarsa kurduğun sürümü seçip **Continue / Change Version**'a bas.
-5. Proje açıldıktan sonra (ilk açılış birkaç dakika sürebilir) **Project** penceresinden
-   `Assets/Scenes/Main.unity` sahnesini çift tıkla (boş bir sahnede de çalışır).
-6. Üstteki **▶ Play** düğmesine bas. Hepsi bu!
+1. **Unity Hub** → https://unity.com/download (macOS). Hub'da **Unity 6000.6.x** sürümünü kur (Apple Silicon).
+2. Hub → **Projects → Add → Add project from disk** → `most-wanted-unity` klasörünü seç → aç.
+3. İlk açılışta otomatik olarak:
+   - **URP** paketi yüklenir, `Assets/Settings/MW_URP.asset` oluşturulup Graphics/Quality ayarlarına atanır,
+     renk uzayı **Linear** yapılır (menü: *Most Wanted → URP Kurulumunu Yap* ile elle de çalıştırabilirsin).
+   - Araç ve harita kayıtları taranır.
+4. `Assets/Scenes/Main.unity` sahnesini aç (boş bir sahne de olur) ve **▶ Play**.
 
-> İpucu: Daha akıcı bir deneyim için Game penceresinde çözünürlüğü *Full HD (1920x1080)* yap
-> ve "Play Maximized / Maximize On Play" seçeneğini aç.
+### Araç paketini içe aktarma (gerekli – depoda yok, lisans gereği)
+1. Fab'dan aldığın **"Car Asset Pack for Arcade & Demolition Racing Games" (Store InvoGames)** `.unitypackage` dosyasını
+   Unity'ye sürükle (veya *Assets → Import Package → Custom Package*) → **Import**.
+2. Paket `Assets/Store InvoGames/...` altına gelir. Otomatik tarama araçları bulur; olmazsa menüden
+   **Most Wanted → Arabaları Tara**. Konsolda `[MW] Araç kaydı güncellendi` yazısını görürsün.
+3. Araç değerleri (isim, fiyat, kütle, tork, devir, azami hız, çekiş, tutuş, polis rolü) `Assets/Resources/CarRegistry.asset`
+   içinde Inspector'dan düzenlenebilir.
 
-### Olası sorunlar
-- **"You are trying to read Input using the UnityEngine.Input class..." hatası:**
-  *Edit → Project Settings → Player → Other Settings → Active Input Handling* değerini
-  **Input Manager (Old)** veya **Both** yap; Unity yeniden başlar.
-- **Pembe/mor malzemeler:** Proje Built-in Render Pipeline kullanır. URP/HDRP şablonu ile açmayın;
-  *Project Settings → Graphics → Default Render Pipeline* boş (None) olmalı.
-- `Assets/Resources/MW_Standard.mat` ve `MW_Sky.mat` dosyalarını **silme**. Bunlar "Standard" ve
-  "Skybox/Procedural" shader'larının build'e dahil edilmesini garanti eder.
-- Unity 6'da bazı "obsolete" uyarıları görebilirsin; zararsızdır.
+### Yeni araç ekleme (çok kolay)
+1. Araç prefabını/FBX'ini `Assets/**/Cars/` veya `Assets/**/Vehicles/` klasörüne (veya `Assets/Resources/Cars/`) koy.
+2. **Most Wanted → Arabaları Tara**. Araç garajda yeni bir araba olarak görünür (varsayılan değerlerle).
+3. Gerekirse `CarRegistry.asset` içinden değerlerini düzenle.
+- Model kuralları: tekerlek objelerinin adında `wheel`/`tire`/`tyre` geçmeli; ön/arka için `front`/`rear` (veya FL/FR/RL/RR).
+  Yön, ölçek (araç uzunluğu → ~4.5 m), merkez ve zemin otomatik ayarlanır. Boya: adında `body`/`paint` geçen malzeme.
+
+### Şehir haritasını ekleme (city_3d_model.glb)
+1. **glTFast** paketini ekle: *Window → Package Manager → + → Add package by name…* → `com.unity.cloud.gltfast` → Add.
+2. `Assets/Maps/` klasörü oluştur ve `city_3d_model.glb` dosyasını içine sürükle (68 MB; depoya eklenmez).
+3. Otomatik tarama `Assets/Resources/MapRegistry.asset`'i oluşturur (yoksa: **Most Wanted → Haritaları Tara**).
+4. Play: harita otomatik yüklenir. Duraklat menüsünden **Harita: Test / İthal** arasında geçiş yapabilirsin.
+- Yol ağı önceden hesaplandı: `Assets/Resources/MapData/city_3d_model_roadgraph.json`
+  (2645 düğüm; trafik, polis, yarış rotaları, garaj, saklanma noktaları). Araçlar `Tools/map_bake/` içindeki
+  Python betikleriyle üretildi (Street mesh'i 2 m ızgaraya → iskelet → graf).
+- Koordinat varsayımı: glTFast, glTF'i Unity'ye aktarırken **X eksenini aynalar**; GLB içinde 0.01 ölçek olduğundan
+  oyun haritanın kök ölçeğini genişlik ≈ 2744 m olacak şekilde (~×100) ayarlar. Açılışta 20 yol noktasından aşağı
+  ışın atılarak kontrol edilir; tutmazsa aynalanmış hal denenir (Konsol: `[MW] Yol ağı doğrulama`).
+
+---
 
 ## 2. Kontroller
 
 | Tuş | İşlev |
 |---|---|
-| W / ↑ | Gaz |
-| S / ↓ | Fren / geri vites |
+| W / ↑, S / ↓ | Gaz, fren / geri |
 | A D / ← → | Direksiyon |
 | Space | El freni (drift) |
-| Sol Shift | Nitro |
-| C | Kovalama kamerası / tampon kamerası |
-| E | Garaj (yeşil işaretin üzerindeyken) |
-| J | İşler menüsü (yarışlar, teslimat) |
-| R | Aracı düzelt (takla attıysan, yavaşken) |
-| Esc | Duraklat menüsü / menüyü kapat |
+| Shift | Nitro |
+| Q / Sağ tık | **Speedbreaker** (ağır çekim) |
+| C | Kamera: yakın / uzak takip, kaput, tampon |
+| E | Garaj (yeşil işaret üzerinde) |
+| J | Yarışlar ve işler |
+| B | Kara Liste |
+| M / Tab | Büyük harita (tekerlek: yakınlaştır, WASD/sürükle: kaydır) |
+| R | Aracı düzelt |
+| F | FPS / performans göstergesi |
+| Esc | Duraklat menüsü |
+| Drag yarışında | E vites ↑, Q vites ↓, A/D şerit değiştir |
 
-## 3. Özellikler
+### Hileler
+- **F9**: +₺1.000.000 para ("Hile: +₺1.000.000")
+- **F10**: Aranma seviyesi anında 5 yıldız (test için)
 
-- **Şehir:** 6x6 bloklu sokak ağı, kaldırımlar, gece pencereleri yanan binalar, sokak lambaları
-  (gece yanan ışıklar), parklar, ağaçlar, şehrin dışında **çevre yolu**, uzak tepeler.
-- **Gün/Gece döngüsü:** Prosedürel gökyüzü (Skybox/Procedural), hareket eden güneş/ay, gölgeler, sis.
-  Duraklat menüsünden hızlı döngü açılabilir.
-- **Sürüş:** WheelCollider fiziği, arcade/drift ayarı: el freniyle arka tutuş düşer, hıza duyarlı
-  direksiyon, devrilme önleyici, downforce, nitro (FOV etkisiyle), prosedürel motor sesi.
-- **Garaj (E):** 7 araç (fiyat ve istatistiklerle). Satın al, %60'a sat, seç, boya (8 renk),
-  performans ayarı (Motor / Nitro / Yol Tutuş, 3 seviye). İlerleme PlayerPrefs'e JSON olarak kaydedilir.
-- **Trafik:** Şeritte giden, kavşaklarda dönen, öndeki araca fren yapan sivil araçlar.
-- **Polis takibi:** Polislerin yanında 95 km/sa üstü hız veya polise çarpma → aranma (1–5 yıldız).
-  Kırmızı/mavi yanıp sönen ışıklar ve siren, yıldız arttıkça daha fazla ekip, 3+ yıldızda **barikat**.
-  Düşük hızda polisler tarafından ~3 sn sıkıştırılırsan **YAKALANIRSIN** (para cezası).
-  Görüş alanından çıkıp uzaklaşırsan **sakinleşme** çubuğu dolar → kaçarsın ve **ödül** kazanırsın.
-- **Yarışlar (J):** 2 sprint, 2 tur yarışı; 3 YZ rakip, geri sayım, sıralama, tur, para ödülü.
-- **Teslimat işleri (J):** Süreli paket teslimatı.
-- **HUD:** Hız göstergesi, vites, nitro çubuğu, para, mini harita (ikinci ortografik kamera →
-  RenderTexture), yıldızlar, sakinleşme çubuğu, bildirimler; duraklat menüsü.
+---
 
-## 4. Teknik notlar
+## 3. Mekanikler
 
-- Tüm oyun `Assets/Scripts/Game.cs` içindeki
-  `[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]` ile başlar;
-  hangi sahne açık olursa olsun Play'de kurulur (sahnedeki varsayılan kamera/ışık kaldırılır).
-- Arayüz IMGUI (`OnGUI`) ile çizilir; ek paket gerekmez. Girdi: eski Input Manager (`Input.GetKey`).
-- Kayıt: `PlayerPrefs` anahtarı `MW_SAVE_V1`. Sıfırlamak için Duraklat → "Kaydı Sıfırla".
-- Dosyalar: `Util.cs` (yardımcılar), `Data.cs` (araç kataloğu, kayıt), `City.cs` (şehir + yol ağı),
-  `Car.cs` (araç fiziği, araç üretimi, polis ışıkları), `Drivers.cs` (oyuncu, trafik, polis, yarışçı YZ),
-  `Managers.cs` (trafik, polis, yarış, teslimat), `Game.cs` (başlatma, kamera, gün/gece),
-  `HUD.cs` (arayüz ve menüler), `AudioSynth.cs` (prosedürel sesler).
+- **Sürüş (arcade-sim):** WheelCollider; tork eğrisi + 6 ileri otomatik şanzıman (vites, devir, devir kesici),
+  kalkışta patinaj/burnout, güçle savrulma (patinajda yanal tutuş düşer), el freni drift'i, hıza duyarlı direksiyon
+  (32° → 150 km/sa'da 7°), karşı direksiyon ve savrulma yardımı, hıza bağlı downforce ve aerodinamik sürükleme.
+- **Devrilmeme:** alçak ağırlık merkezi (aks yüksekliği), lastik kuvvetleri ağırlık merkezi yüksekliğinde uygulanır
+  (`forceAppPointDistance`), viraj demiri (süspansiyon sıkışmasından), gerçekçi atalet, 60°'den fazla yatıkta 1.5 sn
+  sonra otomatik doğrultma. Trafik, polis ve rakiplerde de aynı fizik.
+- **Nitro:** drift, kıl payı geçiş (near miss), rüzgar tüneli (öndeki aracın arkası) ve yüksek hızla dolar;
+  mavi egzoz alevi, FOV artışı, hız çizgileri, kamera sarsıntısı, renk sapması.
+- **Speedbreaker:** zaman %35'e yavaşlar, tutuş/direksiyon artar, ekran renksizleşir; hız ve kıl paylarıyla dolar.
+- **Polis:** 1–5 yıldız. Devriye → sivil polis (3★) → ağır SUV'ler çarpar (4★+), helikopter projektörle izler (4★+),
+  barikat (3★+) ve **çivili şerit** (lastikleri patlatır). Görüş hattını kır → **sakinleşme** çubuğu dolar;
+  **saklanma noktalarında** (otopark, tünel, ara sokaklar) 2.5 kat hızlı. Yavaşken kutulanırsan **yakalanma** çubuğu.
+  Polisleri çarparak devre dışı bırak; **Pursuit Breaker** (su kulesi / benzinlik tentesi) üstlerine çöker.
+  Ödül (bounty): süre, devre dışı polis, barikat atlatma, yapı hasarı. Türkçe telsiz konuşmaları.
+- **Yarışlar (J):** Sprint, Tur, Hız Kamerası (radar toplamı), Gişe (zamana karşı), Drag (manuel vites,
+  mükemmel vites, şerit değiştirme). 3 YZ rakip, lastik bandı, nitro kullanımı. Teslimat işleri.
+- **Kara Liste (B):** 5 rakip (#5 Kobra → #1 Kral). Meydan okumak için yarış galibiyeti + kariyer ödülü +
+  kilometre taşı gerekir. Yenince ödül ve rakibin arabası.
+- **Garaj (E):** satın al, %60'a sat, seç, boya, 7 performans paketi (Motor, Turbo, Şanzıman, Süspansiyon, Lastik,
+  Nitro, Fren; her biri 3 seviye). İlerleme PlayerPrefs'e JSON olarak kaydedilir.
+
+---
+
+## 4. Performans (MacBook / Retina)
+
+Duraklat menüsü → **Grafik: Düşük / Orta / Yüksek / Otomatik**, **FPS hedefi: 30 (Pil tasarrufu) / 60 / 120 (ProMotion) / Sınırsız**.
+
+| | Düşük | Orta (varsayılan) | Yüksek |
+|---|---|---|---|
+| Render ölçeği (STP/FSR ile büyütme) | %60 | %75 | %100 |
+| Gölge mesafesi / kademe | 60 m / 1 | 120 m / 2 | 200 m / 2 |
+| Uzak düzlem | 800 m | 1200 m | 1800 m |
+| Trafik | 10 | 20 | 35 |
+| Bloom / hareket bulanıklığı | kapalı | açık | açık + SSAO (varsa) |
+
+- **Otomatik:** 5 sn ortalama FPS < 50 ise ölçeği/ön ayarı düşürür, > 75 ise yükseltir.
+- **F** göstergesi: FPS, kare süresi, CPU/GPU ms, batch, SetPass, üçgen, render ölçeği.
+- MSAA kapalı (FXAA/SMAA), SRP Batcher açık, GPU Resident Drawer (Unity 6) açılmaya çalışılır, uzak trafik fiziği
+  kapatılır (kinematik), minimap 15 fps'de çizilir, ağaç/direk gibi detaylar katman mesafesiyle erken kesilir.
+- **Öneriler:**
+  - Gerçek performans için **Build** al: *File → Build Profiles → macOS → Build And Run*. Editör, özellikle Retina
+    Game görünümünde çok ek yük getirir.
+  - Editörde oynarken Game görünümünde "Low Resolution Aspect Ratios" seç veya pencereyi küçült.
+  - **Occlusion Culling** pişir (büyük şehirde ciddi kazanç): harita sahnede açıkken
+    *Window → Rendering → Occlusion Culling → Bake*. (Harita çalışma anında yüklendiği için, istersen haritayı
+    Main sahnesine sürükleyip statik işaretleyerek pişir.)
+  - GPU Resident Drawer için: *Project Settings → Graphics → BatchRendererGroup Variants = Keep All* ve URP
+    renderer'ında *Rendering Path = Forward+*.
+
+---
+
+## 5. Sorun giderme
+- **Pembe malzemeler:** URP atanmamış. *Most Wanted → URP Kurulumunu Yap* menüsünü çalıştır.
+- **Input hatası:** *Project Settings → Player → Active Input Handling = Both*.
+- **URP paket sürümü hatası:** Package Manager'da *Universal RP* paketini editörün önerdiği sürüme güncelle.
+- **Araçlar prosedürel kutu görünüyor:** paket içe aktarılmamış veya tarama yapılmamış → *Most Wanted → Arabaları Tara*.
+- **Harita yüklenmiyor:** glTFast kurulu mu? `Assets/Maps/city_3d_model.glb` var mı? *Most Wanted → Haritaları Tara*.
+
+---
+
+## 6. Emeği Geçenler
+- Araçlar: "Car Asset Pack for Arcade & Demolition Racing Games" — **Store InvoGames** (Fab, Standard License)
+- Harita: "City 3D Model" — **Optic Idealist** (Fab/Sketchfab), **CC BY 4.0**
+- Oyun kodu, sesler, test şehri: prosedürel (bu proje)
+
+## 7. Dosyalar
+`Assets/Scripts`: `Game` (başlatma, ışık, post, menüler), `Car`/`CarBuilder`/`CarMath` (fizik, model oturtma),
+`PlayerDriver` (girdi, speedbreaker, nitro doldurma), `CameraRig`, `AI` (trafik, polis, rakip, helikopter, çivili şerit,
+pursuit breaker), `Police`, `Race`, `Career` (kara liste), `City` (test şehri), `World`/`BakedWorld` (harita, yol ağı),
+`OptimizationManager`, `HUD`, `AudioSynth`, `Data`/`CarRegistry`/`MapRegistry`.
+`Assets/Editor/MWSetup.cs`: URP kurulumu + araç/harita tarama. `Tools/physics_sim`: fizik testi. `Tools/map_bake`: yol ağı üretimi.
