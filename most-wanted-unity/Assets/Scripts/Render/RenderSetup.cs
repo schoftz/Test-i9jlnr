@@ -308,7 +308,7 @@ namespace MostWanted.Render
         }
 
         float fogBaseTimer, fogBaseY;
-        bool fogBaseInit;
+        bool fogBaseInit, lastWet;
 
         void LateUpdate()
         {
@@ -321,6 +321,9 @@ namespace MostWanted.Render
                 fogBaseInit = true;
                 RR.GlobalFloat("_MW_FogBaseY", fogBaseY);
             }
+            // ıslak zemin: global kanca (_MW_Wet) şehir/yol shader'ları için; ıslakken yansıma probu daha sık yenilenir
+            bool wet = SaveSystem.Data != null && SaveSystem.Data.wet;
+            if (wet != lastWet) { lastWet = wet; RR.GlobalFloat("_MW_Wet", wet ? 1f : 0f); probeTimer = 0f; }
             UpdateDof();
             UpdateProbe();
         }
@@ -392,7 +395,7 @@ namespace MostWanted.Render
             probeTimer -= Time.unscaledDeltaTime;
             if (probeTimer <= 0f)
             {
-                probeTimer = quality >= 2 ? 0.4f : 2f;
+                probeTimer = quality >= 2 ? 0.4f : (lastWet ? 0.8f : 2f);
                 probe.RenderProbe();
             }
         }
@@ -482,7 +485,14 @@ namespace MostWanted.Render
                             RR.Set(s, "AfterOpaque", false);
                         }
                     }
-                    else if (feat.name == MWAtmosphereFeatureName) feat.SetActive(q >= 1);
+                    else if (feat.name == MWAtmosphereFeatureName)
+                    {
+                        // Shader Metal'de derlenemezse tam ekran geçişi ekranı pembe boyar → kapat
+                        var atm = Shader.Find("MW/SkyAtmosphere");
+                        bool ok = atm != null && atm.isSupported;
+                        if (!ok) Debug.LogWarning("[MW] Atmosfer shader'ı desteklenmiyor; tam ekran atmosfer kapalı.");
+                        feat.SetActive(q >= 1 && ok);
+                    }
                 }
             }
         }

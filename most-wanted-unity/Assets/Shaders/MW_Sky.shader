@@ -13,7 +13,7 @@ Shader "MW/Sky"
         _ZenithDay ("Zenit (gündüz)", Color) = (0.16, 0.34, 0.70, 1)
         _ZenithGolden ("Zenit (altın saat)", Color) = (0.27, 0.38, 0.58, 1)
         _ZenithNight ("Zenit (gece)", Color) = (0.004, 0.007, 0.018, 1)
-        _StarIntensity ("Yıldızlar", Range(0, 4)) = 1.2
+        _StarIntensity ("Yıldızlar", Range(0, 8)) = 4
     }
 
     SubShader
