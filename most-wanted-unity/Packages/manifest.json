@@ -1,8 +1,9 @@
 {
   "dependencies": {
-    "com.unity.render-pipelines.universal": "17.6.0",
+    "com.unity.cloud.gltfast": "6.20.0",
     "com.unity.modules.animation": "1.0.0",
     "com.unity.modules.audio": "1.0.0",
+    "com.unity.modules.imageconversion": "1.0.0",
     "com.unity.modules.imgui": "1.0.0",
     "com.unity.modules.jsonserialize": "1.0.0",
     "com.unity.modules.particlesystem": "1.0.0",
@@ -11,6 +12,7 @@
     "com.unity.modules.uielements": "1.0.0",
     "com.unity.modules.umbra": "1.0.0",
     "com.unity.modules.unitywebrequest": "1.0.0",
-    "com.unity.modules.vehicles": "1.0.0"
+    "com.unity.modules.vehicles": "1.0.0",
+    "com.unity.render-pipelines.universal": "17.6.0"
   }
 }
