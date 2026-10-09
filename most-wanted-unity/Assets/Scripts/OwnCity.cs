@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 using MostWanted.Gen;
+using Sample = MostWanted.CitySurface.Sample;
 
 namespace MostWanted
 {
@@ -25,7 +26,9 @@ namespace MostWanted
         readonly List<Vector3> tunnelLights = new List<Vector3>();
         CityRuntime runtime;
 
-        public OwnCity() { title = "Kendi Şehrimiz"; gen = new CityGen(7); gen.Generate(); junctionR = new float[gen.nodes.Count]; }
+        public readonly CitySurface surf;
+
+        public OwnCity() { title = "Kendi Şehrimiz"; gen = new CityGen(7); gen.Generate(); surf = new CitySurface(gen); junctionR = surf.junctionR; }
 
         static Vector3 P3(V2 p, float y) { return new Vector3(p.x, y, p.z); }
         static long Key(Vector3 p) { return ((long)Mathf.FloorToInt(p.x / Chunk) << 32) ^ (uint)Mathf.FloorToInt(p.z / Chunk); }
@@ -163,10 +166,6 @@ namespace MostWanted
                 float lane = 2.3f;
                 foreach (int ei in n.edges) lane = Mathf.Max(lane, CityGen.Lane(gen.edges[ei].cls));
                 junctionNode[i] = graph.Add(P3(n.p, n.y) + Vector3.up * 0.05f, lane);
-                // kavşak yarıçapı (yol uçlarının kırpılacağı mesafe)
-                float r = 0f;
-                if (n.edges.Count >= 3) foreach (int ei in n.edges) r = Mathf.Max(r, CityGen.Width(gen.edges[ei].cls) * 0.5f + 3f);
-                junctionR[i] = r;
             }
             foreach (var e in gen.edges)
             {
@@ -192,38 +191,8 @@ namespace MostWanted
         }
 
         // ------------------------------------------------------------------ yollar
-        struct Sample { public Vector3 p; public Vector3 r; public bool bridge, tunnel; public float s; }
-
-        List<Sample> Trimmed(REdge e)
-        {
-            int m = e.pts.Count;
-            var s = new float[m];
-            for (int i = 1; i < m; i++) s[i] = s[i - 1] + V2.Dist(e.pts[i - 1], e.pts[i]);
-            float L = s[m - 1];
-            float ta = junctionR[e.a], tb = junctionR[e.b];
-            var o = new List<Sample>();
-            if (L - ta - tb < 1f) return o;
-            System.Func<float, Sample> At = (d) =>
-            {
-                int i = 1; while (i < m - 1 && s[i] < d) i++;
-                float t = Mathf.InverseLerp(s[i - 1], s[i], d);
-                V2 p = V2.Lerp(e.pts[i - 1], e.pts[i], t);
-                V2 dir = (e.pts[i] - e.pts[i - 1]).Norm;
-                float y = Mathf.Lerp(e.ys[i - 1], e.ys[i], t);
-                return new Sample { p = P3(p, y), r = new Vector3(dir.z, 0, -dir.x), bridge = e.bridge[i] || e.bridge[i - 1], tunnel = e.tunnel[i] && e.tunnel[i - 1], s = d };
-            };
-            o.Add(At(ta));
-            for (int i = 1; i < m - 1; i++) if (s[i] > ta + 0.5f && s[i] < L - tb - 0.5f) o.Add(At(s[i]));
-            o.Add(At(L - tb));
-            // köşe yumuşatma: yön vektörlerini komşularla ortala (bindirme yok)
-            for (int i = 1; i < o.Count - 1; i++)
-            {
-                var a = o[i - 1].p; var b = o[i + 1].p;
-                Vector3 d = new Vector3(b.x - a.x, 0, b.z - a.z).normalized;
-                var x = o[i]; x.r = new Vector3(d.z, 0, -d.x); o[i] = x;
-            }
-            return o;
-        }
+        /// <summary>Kırpılmış yol örnekleri (CitySurface: görsel, çarpışma ve denetleyici aynı veri).</summary>
+        List<Sample> Trimmed(REdge e) { return surf.Trimmed(e); }
 
         void BuildRoads()
         {
@@ -258,13 +227,17 @@ namespace MostWanted
                             {
                                 kit.Quad(6, ai + up, bi + up, bo + up, ao + up, new Vector2(ai.x, ai.z), new Vector2(bi.x, bi.z), new Vector2(bo.x, bo.z), new Vector2(ao.x, ao.z));
                                 kit.Quad(7, ai, bi, bi + up, ai + up, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero);       // bordür yüzü
-                                kit.Quad(7, ao + up, bo + up, bo + Vector3.down * (deck ? 1.4f : 0.8f), ao + Vector3.down * (deck ? 1.4f : 0.8f), Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero); // etek
+                                Vector3 so = deck ? Vector3.zero : a.r * 1.3f, sob = deck ? Vector3.zero : b.r * 1.3f;
+                                Vector3 sd = Vector3.down * (deck ? 1.4f : CitySurface.TerrainDrop + 0.45f);
+                                kit.Quad(7, ao + up, bo + up, bo + sob + sd, ao + so + sd, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero); // etek / dış rampa
                             }
                             else
                             {
                                 kit.Quad(6, ao + up, bo + up, bi + up, ai + up, new Vector2(ao.x, ao.z), new Vector2(bo.x, bo.z), new Vector2(bi.x, bi.z), new Vector2(ai.x, ai.z));
                                 kit.Quad(7, ai + up, bi + up, bi, ai, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero);
-                                kit.Quad(7, ao + Vector3.down * (deck ? 1.4f : 0.8f), bo + Vector3.down * (deck ? 1.4f : 0.8f), bo + up, ao + up, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero);
+                                Vector3 so = deck ? Vector3.zero : a.r * -1.3f, sob = deck ? Vector3.zero : b.r * -1.3f;
+                                Vector3 sd = Vector3.down * (deck ? 1.4f : CitySurface.TerrainDrop + 0.45f);
+                                kit.Quad(7, ao + so + sd, bo + sob + sd, bo + up, ao + up, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero);
                             }
                             if (deck) bridgeRail.Add(new KeyValuePair<Vector3, Vector3>(ao + up, bo + up));
                         }
@@ -329,17 +302,9 @@ namespace MostWanted
                 var mr = go.AddComponent<MeshRenderer>();
                 mr.sharedMaterials = roadMats;
                 mr.shadowCastingMode = ShadowCastingMode.On;
-                // tek, kaynaklı çarpıştırıcı (yüzey + bordür + bariyer); tünel lambaları hariç
-                var col = new MeshKit(1);
-                for (int s = 0; s < 9; s++)
-                {
-                    var src = kv.Value.sub[s];
-                    foreach (int idx in src) { col.v.Add(kv.Value.v[idx]); col.uv.Add(Vector2.zero); col.n.Add(Vector3.up); col.sub[0].Add(col.v.Count - 1); }
-                }
-                WeldInto(col);
-                go.AddComponent<MeshCollider>().sharedMesh = col.BuildCollider("YolCarpisma");
                 go.isStatic = true;
             }
+            BuildRoadCollider(roads);
             for (int i = 0; i < tunnelLights.Count; i++)
             {
                 if (i % 2 == 1) continue;
@@ -430,67 +395,63 @@ namespace MostWanted
             }
         }
 
+        /// <summary>
+        /// Tüm yol ağı için TEK MeshCollider (parça sınırlarında hayalet kenar / basamak yok).
+        /// Bordürler rampalı, kaldırım dış kenarı araziye rampalı (bkz. CitySurface) → görünmez "ÇAT" çarpmaları yok.
+        /// </summary>
+        void BuildRoadCollider(Transform parent)
+        {
+            var soup = surf.BuildRoadCollider();
+            List<Vector3> verts; List<int> tris;
+            soup.Weld(out verts, out tris);
+            var m = new Mesh { name = "YolCarpisma" };
+            m.indexFormat = IndexFormat.UInt32;
+            m.SetVertices(verts);
+            m.SetTriangles(tris, 0);
+            m.RecalculateBounds();
+            var go = new GameObject("YolCarpisma");
+            go.transform.SetParent(parent, false);
+            var mc = go.AddComponent<MeshCollider>();
+            mc.sharedMesh = m;
+            go.isStatic = true;
+        }
+
+        static void TriUp(MeshKit kit, int sub, Vector3 a, Vector3 b, Vector3 c)
+        {
+            if (Vector3.Cross(b - a, c - a).y < 0f) { var t = b; b = c; c = t; }
+            int ia = kit.Vert(a, new Vector2(a.x, a.z), Vector3.up), ib = kit.Vert(b, new Vector2(b.x, b.z), Vector3.up), ic = kit.Vert(c, new Vector2(c.x, c.z), Vector3.up);
+            kit.Tri(sub, ia, ib, ic);
+        }
+
+        static void QuadUp(MeshKit kit, int sub, Vector3 a, Vector3 b, Vector3 c, Vector3 d)
+        {
+            if (Vector3.Cross(b - a, d - a).y < 0f) { var t = b; b = d; d = t; }
+            kit.Quad(sub, a, b, c, d, new Vector2(a.x, a.z), new Vector2(b.x, b.z), new Vector2(c.x, c.z), new Vector2(d.x, d.z));
+        }
+
         void BuildJunctions()
         {
-            for (int ni = 0; ni < gen.nodes.Count; ni++)
+            Vector3 up = Vector3.up * CurbH;
+            Vector3 dn = Vector3.down * (CitySurface.TerrainDrop + 0.45f);
+            foreach (var J in surf.junctions)
             {
-                var n = gen.nodes[ni];
-                if (junctionR[ni] <= 0f) continue;
-                var ends = new List<KeyValuePair<float, Sample>>();
-                var widths = new List<float>(); var sws = new List<float>();
-                foreach (int ei in n.edges)
+                var kit = Kit(J.center);
+                if (J.tris != null)
+                    for (int k = 0; k < J.tris.Count; k += 3) TriUp(kit, 5, J.poly[J.tris[k]], J.poly[J.tris[k + 1]], J.poly[J.tris[k + 2]]);
+                else
+                    for (int k = 0; k < J.poly.Count; k++) TriUp(kit, 5, J.center, J.poly[k], J.poly[(k + 1) % J.poly.Count]);
+                foreach (var c in J.corners)
                 {
-                    var e = gen.edges[ei];
-                    var smp = Trimmed(e);
-                    if (smp.Count < 2) continue;
-                    // kavşağa bakan uç; "dışa" yön
-                    Sample end = e.a == ni ? smp[0] : smp[smp.Count - 1];
-                    Vector3 c = P3(n.p, n.y);
-                    Vector3 d = new Vector3(end.p.x - c.x, 0, end.p.z - c.z).normalized;
-                    // yol ucundaki köşelerle birebir aynı noktalar (kaynak/dikişsiz): örneğin kendi sağ vektörü, dışa yöne göre işaretli
-                    if (e.a != ni) end.r = -end.r;
-                    float ang = Mathf.Atan2(d.x, d.z);
-                    ends.Add(new KeyValuePair<float, Sample>(ang, end));
-                    widths.Add(e.Width); sws.Add(CityGen.Sidewalk(e.cls));
-                }
-                if (ends.Count < 2) continue;
-                // açıya göre sırala (saat yönü)
-                var idx = new List<int>(); for (int i = 0; i < ends.Count; i++) idx.Add(i);
-                idx.Sort((x, y) => ends[x].Key.CompareTo(ends[y].Key));
-                Vector3 center = P3(n.p, n.y);
-                var kit = Kit(center);
-                var poly = new List<Vector3>();
-                var info = new List<int>();
-                foreach (int i in idx)
-                {
-                    var s = ends[i].Value; float hw = widths[i] * 0.5f;
-                    poly.Add(s.p - s.r * hw); info.Add(i);   // sol köşe
-                    poly.Add(s.p + s.r * hw); info.Add(i);   // sağ köşe
-                }
-                for (int k = 0; k < poly.Count; k++)
-                {
-                    Vector3 a = poly[k], b = poly[(k + 1) % poly.Count];
-                    int ia = kit.Vert(center, new Vector2(center.x, center.z), Vector3.up);
-                    int ib = kit.Vert(a, new Vector2(a.x, a.z), Vector3.up);
-                    int ic = kit.Vert(b, new Vector2(b.x, b.z), Vector3.up);
-                    kit.Tri(5, ia, ib, ic);
-                }
-                // köşe kaldırımları (sağ köşe i → sol köşe i+1)
-                for (int k = 0; k < idx.Count; k++)
-                {
-                    int i0 = idx[k], i1 = idx[(k + 1) % idx.Count];
-                    float sw0 = sws[i0], sw1 = sws[i1];
-                    if (sw0 <= 0f || sw1 <= 0f) continue;
-                    var s0 = ends[i0].Value; var s1 = ends[i1].Value;
-                    Vector3 r0 = s0.p + s0.r * (widths[i0] * 0.5f), l1 = s1.p - s1.r * (widths[i1] * 0.5f);
-                    Vector3 r0o = s0.p + s0.r * (widths[i0] * 0.5f + sw0), l1o = s1.p - s1.r * (widths[i1] * 0.5f + sw1);
-                    Vector3 up = Vector3.up * CurbH;
-                    // köşe dolgusu (dışa doğru üçgenler)
-                    Vector3 cornerOut = (r0o + l1o) * 0.5f + ((r0o + l1o) * 0.5f - center).normalized * (Mathf.Max(sw0, sw1) * 0.6f);
-                    cornerOut.y = (r0o.y + l1o.y) * 0.5f;
-                    kit.Quad(6, r0 + up, r0o + up, cornerOut + up, l1 + up, new Vector2(r0.x, r0.z), new Vector2(r0o.x, r0o.z), new Vector2(cornerOut.x, cornerOut.z), new Vector2(l1.x, l1.z));
-                    kit.Quad(6, l1 + up, cornerOut + up, l1o + up, l1 + up, new Vector2(l1.x, l1.z), new Vector2(cornerOut.x, cornerOut.z), new Vector2(l1o.x, l1o.z), new Vector2(l1.x, l1.z));
-                    kit.Quad(7, r0, r0 + up, l1 + up, l1, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero);   // bordür yüzü (kavşak tarafı)
+                    if (!c.sidewalk) continue;
+                    for (int i = 1; i < c.inArc.Count; i++)
+                    {
+                        Vector3 i0 = c.inArc[i - 1], i1 = c.inArc[i], o0 = c.outArc[i - 1], o1 = c.outArc[i];
+                        QuadUp(kit, 6, i0 + up, i1 + up, o1 + up, o0 + up);
+                        Vector3 outward = (o0 + o1 - i0 - i1); outward.y = 0f;
+                        kit.QuadOut(7, i0, i0 + up, i1 + up, i1, -outward);       // bordür yüzü (kavşağa bakar)
+                        Vector3 d0 = o0 - i0; d0.y = 0f; d0 = d0.normalized; Vector3 d1 = o1 - i1; d1.y = 0f; d1 = d1.normalized;
+                        QuadUp(kit, 7, o0 + up, o1 + up, o1 + d1 * 1.3f + dn, o0 + d0 * 1.3f + dn);
+                    }
                 }
             }
         }
@@ -521,33 +482,8 @@ namespace MostWanted
             }
         }
 
-        /// <summary>Arazi yüksekliği: doğal H, yollara yakınsa yol seviyesinin biraz altına yumuşak geçiş.</summary>
-        public float Ground(float x, float z)
-        {
-            float h = gen.H(x, z);
-            int cx = Mathf.FloorToInt(x / 40f), cz = Mathf.FloorToInt(z / 40f);
-            float best = float.MaxValue, by = 0f, bh = 0f;
-            for (int dx = -1; dx <= 1; dx++)
-                for (int dz = -1; dz <= 1; dz++)
-                {
-                    List<Vector4> l;
-                    if (!segHash.TryGetValue(((long)(cx + dx) << 32) ^ (uint)(cz + dz), out l)) continue;
-                    foreach (var s in l)
-                    {
-                        if (s.w < 0f) continue;
-                        float d = Mathf.Sqrt((s.x - x) * (s.x - x) + (s.y - z) * (s.y - z)) - s.w;
-                        if (d < best) { best = d; by = s.z; bh = s.w; }
-                    }
-                }
-            if (best < 30f)
-            {
-                float t = Mathf.Clamp01(best / 30f); t = t * t * (3f - 2f * t);
-                float roadLevel = by - 0.35f;
-                h = Mathf.Lerp(roadLevel, h, t);
-                if (best < 2f) h = Mathf.Min(h, roadLevel);
-            }
-            return h;
-        }
+        /// <summary>Arazi yüksekliği (yollar boyunca yol yüzeyinin altında) — CitySurface ile aynı fonksiyon.</summary>
+        public float Ground(float x, float z) { return surf.Ground(x, z); }
 
         void BuildTerrain()
         {
@@ -555,15 +491,14 @@ namespace MostWanted
             var tex = GroundTexture();
             var mat = U.NewMat(Color.white, 0.06f, 0f);
             U.SetMainTex(mat, tex);
-            float x0 = -3200f, z0 = -3400f, size = 6800f;
-            int chunks = 12;
+            float x0 = CitySurface.TerrainX0, z0 = CitySurface.TerrainZ0, size = CitySurface.TerrainSize;
+            int chunks = CitySurface.TerrainChunks;
             float cs = size / chunks;
             for (int cx = 0; cx < chunks; cx++)
                 for (int cz = 0; cz < chunks; cz++)
                 {
                     float wx = x0 + cx * cs, wz = z0 + cz * cs;
-                    bool inner = wx > -2000f && wx + cs < 2100f && wz > -2200f && wz + cs < 2000f;
-                    int res = inner ? 40 : 14;     // şehir içinde ~14 m, dışında ~40 m
+                    int res = CitySurface.TerrainRes(cx, cz);
                     float step = cs / res;
                     var verts = new Vector3[(res + 1) * (res + 1)];
                     var uvs = new Vector2[verts.Length];
@@ -574,15 +509,16 @@ namespace MostWanted
                             verts[i * (res + 1) + j] = new Vector3(x, Ground(x, z), z);
                             uvs[i * (res + 1) + j] = new Vector2((x - x0) / size, (z - z0) / size);
                         }
-                    var tris = new int[res * res * 6];
-                    int t = 0;
+                    var tl = new List<int>(res * res * 6);
                     for (int i = 0; i < res; i++)
                         for (int j = 0; j < res; j++)
                         {
                             int a = i * (res + 1) + j, b = a + 1, d = a + res + 1, e = d + 1;
-                            tris[t++] = a; tris[t++] = b; tris[t++] = d;
-                            tris[t++] = b; tris[t++] = e; tris[t++] = d;
+                            // yol/tünel hacmine giren üçgen çizilmez (tünel ağzı, yarma)
+                            if (surf.TerrainTriOk(verts[a], verts[b], verts[d])) { tl.Add(a); tl.Add(b); tl.Add(d); }
+                            if (surf.TerrainTriOk(verts[b], verts[e], verts[d])) { tl.Add(b); tl.Add(e); tl.Add(d); }
                         }
+                    var tris = tl.ToArray();
                     var m = new Mesh { vertices = verts, uv = uvs, triangles = tris };
                     m.RecalculateNormals(); m.RecalculateBounds();
                     var go = new GameObject("Arazi");
@@ -713,6 +649,8 @@ namespace MostWanted
             foreach (var b in gen.buildings)
             {
                 var mp = b.parts[0];
+                // yol + kaldırım koridoruna taşan bina/parça yok (görünmez çarpışma kutusu olmasın)
+                if (surf.BoxOnRoad(mp.c, mp.w, mp.d, mp.rot, 0.5f)) continue;
                 float baseY = BaseHeight(mp);
                 Vector3 c0 = P3(mp.c, baseY);
                 long k = Key(c0);
@@ -724,6 +662,7 @@ namespace MostWanted
                 if (b.style == 6) { ParkingGarage(kit, croot, mp, baseY); continue; }
                 for (int pi = 0; pi < b.parts.Count; pi++)
                 { var part = b.parts[pi];
+                    if (pi > 0 && surf.BoxOnRoad(part.c, part.w, part.d, part.rot, 0.5f)) continue;
                     float rotDeg = part.rot * Mathf.Rad2Deg;
                     Vector3 c = P3(part.c, baseY);
                     float y0 = part.y0 - 1.5f;    // temel: eğimli zemine gömülsün
@@ -787,19 +726,7 @@ namespace MostWanted
             }
         }
 
-        float BaseHeight(Box b)
-        {
-            // binanın oturduğu zemin: köşelerin en düşüğü
-            float min = float.MaxValue;
-            float s = Mathf.Sin(b.rot), co = Mathf.Cos(b.rot);
-            for (int i = 0; i < 4; i++)
-            {
-                float lx = (i % 2 == 0 ? -0.5f : 0.5f) * b.w, lz = (i < 2 ? -0.5f : 0.5f) * b.d;
-                float x = b.c.x + lx * co + lz * s, z = b.c.z - lx * s + lz * co;
-                min = Mathf.Min(min, Ground(x, z));
-            }
-            return min;
-        }
+        float BaseHeight(Box b) { return surf.BaseHeight(b); }
 
         static void PitchedRoof(MeshKit kit, Vector3 c, float w, float d, float rotDeg, float top, float rise)
         {

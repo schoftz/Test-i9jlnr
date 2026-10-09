@@ -319,7 +319,10 @@ namespace MostWanted.Gen
                 }
                 Line(RoadClass.Street, new V2(xs - 2f, z), new V2(SeaX(z) - 150f, z));
             }
+            SeparateParallel();
             Planarize();
+            PruneAcute();
+            foreach (var e in edges) SmoothBends(e);
             Heights();
             PlaceBuildings();
             Districts();
@@ -327,6 +330,72 @@ namespace MostWanted.Gen
         }
 
         List<V2> hwPoly = new List<V2>(), ring2Poly = new List<V2>();
+
+        static int Rank(RoadClass c)
+        {
+            switch (c) { case RoadClass.Highway: return 4; case RoadClass.Boulevard: return 3; case RoadClass.Coastal: return 2; case RoadClass.Avenue: return 1; default: return 0; }
+        }
+
+        /// <summary>
+        /// Daha önemli bir yola paralel ve koridoru üst üste binen alt sınıf yol parçalarını çıkar
+        /// (kaldırım başka yolun şeridine taşmasın — görünmez bordür çarpması). Kalan uçlar büyük yola T kavşakla bağlanır.
+        /// </summary>
+        void SeparateParallel()
+        {
+            var hash = new Dictionary<long, List<int[]>>();   // poly, seg
+            for (int pi = 0; pi < polys.Count; pi++)
+            {
+                var l = polys[pi].Value;
+                for (int k = 1; k < l.Count; k++)
+                {
+                    V2 m = V2.Lerp(l[k - 1], l[k], 0.5f);
+                    long key = ((long)(int)Math.Floor(m.x / 50f) << 32) ^ (uint)(int)Math.Floor(m.z / 50f);
+                    List<int[]> b; if (!hash.TryGetValue(key, out b)) hash[key] = b = new List<int[]>();
+                    b.Add(new[] { pi, k });
+                }
+            }
+            var outPolys = new List<KeyValuePair<RoadClass, List<V2>>>();
+            for (int pi = 0; pi < polys.Count; pi++)
+            {
+                var cls = polys[pi].Key; var l = polys[pi].Value;
+                if (cls == RoadClass.Highway || cls == RoadClass.Boulevard) { outPolys.Add(polys[pi]); continue; }
+                var drop = new bool[l.Count]; var snap = new V2[l.Count];
+                for (int i = 0; i < l.Count; i++)
+                {
+                    V2 p = l[i];
+                    V2 dir = (l[Math.Min(i + 1, l.Count - 1)] - l[Math.Max(i - 1, 0)]).Norm;
+                    int cx = (int)Math.Floor(p.x / 50f), cz = (int)Math.Floor(p.z / 50f);
+                    for (int dx = -1; dx <= 1 && !drop[i]; dx++)
+                        for (int dz = -1; dz <= 1 && !drop[i]; dz++)
+                        {
+                            List<int[]> b;
+                            if (!hash.TryGetValue(((long)(cx + dx) << 32) ^ (uint)(cz + dz), out b)) continue;
+                            foreach (var sg in b)
+                            {
+                                var oc = polys[sg[0]].Key;
+                                if (sg[0] == pi || Rank(oc) <= Rank(cls)) continue;
+                                if (cls == RoadClass.Coastal && oc == RoadClass.Highway) continue;   // sahil yolu bağlantı rampaları
+                                var ol = polys[sg[0]].Value; V2 a = ol[sg[1] - 1], c = ol[sg[1]];
+                                V2 sd = c - a; float L2 = V2.Dot(sd, sd); if (L2 < 1e-6f) continue;
+                                float t = Clamp01(V2.Dot(p - a, sd) / L2);
+                                V2 q = a + sd * t;
+                                float need = Width(cls) * 0.5f + Width(oc) * 0.5f + Math.Max(Sidewalk(cls), Sidewalk(oc)) + 1f;
+                                if (V2.Dist(p, q) < need && Math.Abs(V2.Dot(dir, sd.Norm)) > 0.6f) { drop[i] = true; snap[i] = q + (q - p).Norm * 4f; break; }
+                            }
+                        }
+                }
+                var cur = new List<V2>();
+                for (int i = 0; i < l.Count; i++)
+                {
+                    if (!drop[i]) { if (cur.Count == 0 && i > 0 && drop[i - 1]) cur.Add(snap[i - 1]); cur.Add(l[i]); continue; }
+                    if (cur.Count > 0) { cur.Add(snap[i]); if (cur.Count > 3 && Len(cur) > 30f) outPolys.Add(new KeyValuePair<RoadClass, List<V2>>(cls, cur)); cur = new List<V2>(); }
+                }
+                if (cur.Count > 3 && Len(cur) > 30f) outPolys.Add(new KeyValuePair<RoadClass, List<V2>>(cls, cur));
+            }
+            polys.Clear(); polys.AddRange(outPolys);
+        }
+
+        static float Len(List<V2> l) { float s = 0f; for (int i = 1; i < l.Count; i++) s += V2.Dist(l[i - 1], l[i]); return s; }
 
         /// <summary>Otoyolda en yakın noktanın biraz ötesi (kesişim garantisi).</summary>
         V2 ToHighway(V2 p)
@@ -492,6 +561,7 @@ namespace MostWanted.Gen
                     if (len < 45f && vAdj[cur].Count >= 3)
                         for (int i = 0; i < chain.Count - 1; i++) { vAdj[chain[i]].Remove(chain[i + 1]); vAdj[chain[i + 1]].Remove(chain[i]); }
                 }
+            MergeCloseJunctions(vpos, vAdj);
             // 5) kavşaklar (derece != 2) düğüm; aradaki derece-2 zincirleri kenar
             var nodeOf = new Dictionary<int, int>();
             for (int v = 0; v < vpos.Count; v++)
@@ -531,6 +601,177 @@ namespace MostWanted.Gen
                         if (!visited.Contains(EK(v, nb))) { nodeOf[v] = nodes.Count; nodes.Add(new RNode { p = vpos[v] }); foreach (var nb2 in new List<int>(vAdj[v].Keys)) Walk(v, nb2); break; }
             // yalnızca en büyük bağlı bileşeni tut
             KeepLargestComponent();
+        }
+
+        /// <summary>
+        /// Birbirine çok yakın kavşakları (kısa bağlantı zinciri) tek kavşakta birleştir:
+        /// iç içe geçen kavşak kaplamaları / kesilip yok olan kısa yollar oluşmasın.
+        /// </summary>
+        static void MergeCloseJunctions(List<V2> vpos, List<Dictionary<int, RoadClass>> vAdj)
+        {
+            int n = vpos.Count;
+            var parent = new int[n]; for (int i = 0; i < n; i++) parent[i] = i;
+            Func<int, int> Find = null; Find = x => parent[x] == x ? x : (parent[x] = Find(parent[x]));
+            Func<int, float> Wmax = v => { float w = 0f; foreach (var kv in vAdj[v]) w = Math.Max(w, Width(kv.Value)); return w; };
+            for (int v = 0; v < n; v++)
+            {
+                if (vAdj[v].Count < 3) continue;
+                foreach (var first in new List<int>(vAdj[v].Keys))
+                {
+                    var chain = new List<int> { v };
+                    int prev = v, cur = first; float len = V2.Dist(vpos[v], vpos[first]);
+                    while (vAdj[cur].Count == 2 && len < 40f)
+                    {
+                        chain.Add(cur);
+                        int nx = -1; foreach (var kv in vAdj[cur]) if (kv.Key != prev) { nx = kv.Key; break; }
+                        if (nx < 0) break;
+                        len += V2.Dist(vpos[cur], vpos[nx]); prev = cur; cur = nx;
+                    }
+                    if (vAdj[cur].Count < 3 || cur == v) continue;
+                    float lim = (Wmax(v) + Wmax(cur)) * 0.5f + 10f;
+                    if (len > lim) continue;
+                    chain.Add(cur);
+                    foreach (int c in chain) parent[Find(c)] = Find(v);
+                }
+            }
+            var groups = new Dictionary<int, List<int>>();
+            for (int v = 0; v < n; v++) { int r = Find(v); if (r == v && vAdj[v].Count == 0) continue; List<int> l; if (!groups.TryGetValue(r, out l)) groups[r] = l = new List<int>(); l.Add(v); }
+            foreach (var g in groups)
+            {
+                if (g.Value.Count < 2) continue;
+                var set = new HashSet<int>(g.Value);
+                int rep = g.Key;
+                V2 cen = new V2(0, 0); int cnt = 0;
+                foreach (int m in g.Value) if (vAdj[m].Count >= 3) { cen = cen + vpos[m]; cnt++; }
+                if (cnt > 0) vpos[rep] = cen * (1f / cnt);
+                var ext = new List<KeyValuePair<int, RoadClass>>();
+                foreach (int m in g.Value)
+                {
+                    foreach (var kv in vAdj[m]) if (!set.Contains(kv.Key)) ext.Add(kv);
+                    foreach (var kv in new List<int>(vAdj[m].Keys)) { vAdj[kv].Remove(m); }
+                    vAdj[m].Clear();
+                }
+                foreach (var kv in ext)
+                {
+                    RoadClass c0;
+                    if (!vAdj[rep].TryGetValue(kv.Key, out c0) || c0 < kv.Value) { vAdj[rep][kv.Key] = kv.Value; vAdj[kv.Key][rep] = kv.Value; }
+                }
+            }
+        }
+
+        /// <summary>Aynı düğümden çok dar açıyla (&lt; 28°) çıkan yol çiftinde önemsiz olanı kaldır (kaldırımlar üst üste binmesin).</summary>
+        void PruneAcute()
+        {
+            for (int iter = 0; iter < 6; iter++)
+            {
+                var remove = new HashSet<int>();
+                for (int ni = 0; ni < nodes.Count; ni++)
+                {
+                    var n = nodes[ni];
+                    for (int i = 0; i < n.edges.Count; i++)
+                        for (int j = i + 1; j < n.edges.Count; j++)
+                        {
+                            int ea = n.edges[i], eb = n.edges[j];
+                            if (ea == eb || remove.Contains(ea) || remove.Contains(eb)) continue;
+                            V2 da = Dir(edges[ea], ni), db = Dir(edges[eb], ni);
+                            if (V2.Dot(da, db) < 0.883f) continue;   // 28°
+                            var A = edges[ea]; var B = edges[eb];
+                            int ra = Rank(A.cls), rb = Rank(B.cls);
+                            int victim = ra != rb ? (ra < rb ? ea : eb) : (A.Length < B.Length ? ea : eb);
+                            if (edges[victim].cls == RoadClass.Highway) continue;
+                            remove.Add(victim);
+                        }
+                }
+                if (remove.Count == 0) break;
+                var ne = new List<REdge>();
+                foreach (var nd in nodes) nd.edges.Clear();
+                for (int i = 0; i < edges.Count; i++)
+                {
+                    if (remove.Contains(i)) continue;
+                    var e = edges[i]; int id = ne.Count; ne.Add(e);
+                    nodes[e.a].edges.Add(id); if (e.b != e.a) nodes[e.b].edges.Add(id);
+                }
+                edges.Clear(); edges.AddRange(ne);
+                KeepLargestComponent();
+            }
+        }
+
+        /// <summary>Kenar içindeki keskin kırıkları (&gt; 12°) yarıçaplı yayla yumuşat (kaldırım/şerit üst üste binmesin).</summary>
+        static void SmoothBends(REdge e)
+        {
+            var p = e.pts;
+            if (p.Count < 3) return;
+            float R = Width(e.cls) * 0.5f + Sidewalk(e.cls) + 4f;
+            var cum = new float[p.Count];
+            for (int i = 1; i < p.Count; i++) cum[i] = cum[i - 1] + V2.Dist(p[i - 1], p[i]);
+            var sharp = new List<int>(); var dcut = new List<float>();
+            for (int i = 1; i < p.Count - 1; i++)
+            {
+                V2 a = (p[i] - p[i - 1]).Norm, b = (p[i + 1] - p[i]).Norm;
+                float th = (float)Math.Acos(Math.Max(-1f, Math.Min(1f, V2.Dot(a, b))));
+                if (th > 12f * (float)Math.PI / 180f) { sharp.Add(i); dcut.Add(R * (float)Math.Tan(th * 0.5f)); }
+            }
+            if (sharp.Count == 0) return;
+            for (int k = 0; k < sharp.Count; k++)
+            {
+                float prevGap = k == 0 ? cum[sharp[k]] : cum[sharp[k]] - cum[sharp[k - 1]];
+                float nextGap = k == sharp.Count - 1 ? cum[p.Count - 1] - cum[sharp[k]] : cum[sharp[k + 1]] - cum[sharp[k]];
+                dcut[k] = Math.Min(dcut[k], Math.Min(prevGap * (k == 0 ? 0.45f : 0.5f), nextGap * (k == sharp.Count - 1 ? 0.45f : 0.5f)));
+            }
+            Func<float, V2> At = d =>
+            {
+                int i = 1; while (i < p.Count - 1 && cum[i] < d) i++;
+                float t = cum[i] > cum[i - 1] ? (d - cum[i - 1]) / (cum[i] - cum[i - 1]) : 0f;
+                return V2.Lerp(p[i - 1], p[i], Clamp01(t));
+            };
+            var o = new List<V2>();
+            int next = 0;
+            for (int i = 0; i < p.Count; i++)
+            {
+                if (next < sharp.Count && i == sharp[next])
+                {
+                    float s0 = cum[i] - dcut[next], s1 = cum[i] + dcut[next];
+                    // önceki (kesim aralığındaki) noktaları at
+                    while (o.Count > 1 && OArc(o, p, cum) > s0 - 0.3f) o.RemoveAt(o.Count - 1);
+                    V2 A = At(s0), C = p[i], B = At(s1);
+                    int n = Math.Max(3, (int)Math.Ceiling(dcut[next] / 2f));
+                    for (int j = 0; j <= n; j++)
+                    {
+                        float t = j / (float)n;
+                        o.Add(A * ((1 - t) * (1 - t)) + C * (2 * t * (1 - t)) + B * (t * t));
+                    }
+                    // kesim aralığındaki sonraki noktaları atla
+                    while (i + 1 < p.Count - 1 && cum[i + 1] < s1 + 0.3f && !(next + 1 < sharp.Count && sharp[next + 1] == i + 1)) i++;
+                    next++;
+                    continue;
+                }
+                o.Add(p[i]);
+            }
+            if (V2.Dist(o[o.Count - 1], p[p.Count - 1]) > 0.01f) o.Add(p[p.Count - 1]);
+            e.pts.Clear(); e.pts.AddRange(o);
+        }
+
+        /// <summary>o listesinin son noktasının özgün polyline üzerindeki yaklaşık yay uzunluğu.</summary>
+        static float OArc(List<V2> o, List<V2> p, float[] cum)
+        {
+            V2 q = o[o.Count - 1];
+            float best = float.MaxValue, bs = 0f;
+            for (int i = 1; i < p.Count; i++)
+            {
+                V2 a = p[i - 1], d = p[i] - a; float L2 = V2.Dot(d, d); if (L2 < 1e-6f) continue;
+                float t = Clamp01(V2.Dot(q - a, d) / L2);
+                float dist = V2.Dist(a + d * t, q);
+                if (dist < best) { best = dist; bs = cum[i - 1] + (cum[i] - cum[i - 1]) * t; }
+            }
+            return bs;
+        }
+
+        static V2 Dir(REdge e, int node)
+        {
+            V2 a, b;
+            if (e.a == node) { a = e.pts[0]; b = e.pts[Math.Min(2, e.pts.Count - 1)]; }
+            else { a = e.pts[e.pts.Count - 1]; b = e.pts[Math.Max(0, e.pts.Count - 3)]; }
+            return (b - a).Norm;
         }
 
         void KeepLargestComponent()
@@ -634,6 +875,41 @@ namespace MostWanted.Gen
                     e.ys[i] = Math.Max(lo, Math.Min(hi, e.ys[i]));
                 }
                 e.ys[0] = ya; e.ys[m - 1] = yb;
+                // kavşak yakınında düzleş (kavşak kaplaması düz kalsın), sonra mesafe tabanlı yumuşatma (düşey kırık yok)
+                if (m > 2)
+                {
+                    float ease = Math.Min(14f, L * 0.3f);
+                    for (int i = 1; i < m - 1; i++)
+                    {
+                        float ta = Clamp01(s[i] / ease), tb = Clamp01((L - s[i]) / ease);
+                        ta = ta * ta * (3f - 2f * ta); tb = tb * tb * (3f - 2f * tb);
+                        float y = e.ys[i];
+                        y = ya + (y - ya) * ta;
+                        y = yb + (y - yb) * tb;
+                        e.ys[i] = y;
+                    }
+                    const float sig = 5f;
+                    var tmp = new float[m];
+                    for (int pass = 0; pass < 2; pass++)
+                    {
+                        for (int i = 0; i < m; i++)
+                        {
+                            if (i == 0 || i == m - 1) { tmp[i] = e.ys[i]; continue; }
+                            float ws = 0f, acc = 0f;
+                            for (int j = 0; j < m; j++)
+                            {
+                                float d = s[j] - s[i];
+                                if (d < -3f * sig) continue; if (d > 3f * sig) break;
+                                float w = (float)Math.Exp(-d * d / (2f * sig * sig)) * (j > 0 && j < m - 1 ? (s[Math.Min(m - 1, j + 1)] - s[Math.Max(0, j - 1)]) * 0.5f : 1f);
+                                ws += w; acc += w * e.ys[j];
+                            }
+                            // uçlara yakın: uç değerine yansıt (kenarda çekilme olmasın)
+                            float k = Math.Min(Clamp01(s[i] / ease), Clamp01((L - s[i]) / ease));
+                            tmp[i] = Lerp(e.ys[i], acc / Math.Max(1e-5f, ws), k);
+                        }
+                        Array.Copy(tmp, e.ys, m);
+                    }
+                }
                 for (int i = 0; i < m; i++)
                 {
                     float h = H(e.pts[i].x, e.pts[i].z);
