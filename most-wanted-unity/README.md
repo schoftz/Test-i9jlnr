@@ -152,6 +152,7 @@ Duraklat → **Polis zorluğu**: Kolay (varsayılan) / Normal / Zor.
 - 1–2 yıldız: polis çoğunlukla arkadan takip eder; araç başına 6–8 sn'de en fazla bir çarpma; oyuncudan 15 km/s'ten
   hızlıysa asla çarpmaz. 3+ yıldız: kutulama, daha sık çarpma, nitro, barikat/çivili şerit.
 - Çarpışmada oyuncunun hız değişimi sınırlı (Kolay 3 m/s … + yıldız başına 1.2).
+- Takip SADECE bir polis seni 180 km/s üstünde (120 m, görüş hattı) görürse ya da polise > 40 km/s ile kasıtlı çarparsan başlar; şehirde en fazla 3 dağınık devriye, oyuncuya 150 m’den yakın doğmaz.
 - Görülmek: 40 m içinde ya da 120 m içinde görüş hattında. Görülünce HUD: "Polislerin görüş alanından çık".
   Görülmeyince sakinleşme dolar: 1–2 yıldızda 20/25/30 sn (zorluğa göre), üst yıldızlarda daha kısa; saklanma
   noktasında 2× hızlı. Sakinleşmede mini haritada yanıp sönen **S** saklanma noktaları.
@@ -166,7 +167,15 @@ Duraklat → **Polis zorluğu**: Kolay (varsayılan) / Normal / Zor.
   yardımı (yalnızca kayarken; hedef savrulma tutuş sınırıyla kırpılır → denge kontrolü). Yanal kuvvet **gazdan bağımsız**;
   sadece gerçek patinaj/kilitlenmede düşer. Gaz bırakınca hafif ağırlık transferi → çok hafif lift-off oversteer.
   El freni = arka tekerler kilitlenir (RVP ebrake) → drift.
-- **Sürüş stili** (Duraklat menüsü, sadece oyuncu): **Arcade** (varsayılan, NFS hissi) / **Gerçekçi** (saf RVP ayarı).
+- **MW Sürüş** (varsayılan, oyuncu): kendi basit/kararlı arcade modelimiz (`MwDrive.cs`). Süspansiyon/temas RVP ışınlarıyla,
+  ama yanal lastik kuvveti yok: savrulma hızı doğrudan hedeflenir — ω* = girdi × MaxYaw(hız) × hassasiyet
+  (tablo km/s→°/s: 0→0, 10→70, 30→95, 60→80, 100→58, 120→48, 160→38, 220→28; geri viteste ters), ivme sınırı
+  300°/s² (giriş) / 450°/s² (bırakma). Yanal hız üstel söner (tutuş 9/s, çok yüksek hızda 6/s, el freninde 1.8/s) ve
+  sönen kısım ileri yöne döndürülür (hız korunur; 90° dönüşte ~%5 kayıp). Frenle dönüş +%15, el freni +%35 savrulma.
+  Bordür/basamak/duvar teması savrulma üretmez (sadece araçlarla çarpışma kısmen). `Tools/physics_sim/MwSim.cs`:
+  tam kilit yarıçap 30→5.0 m, 60→11.8, 100→27.0, 120→39.2; 120 km/s slalomda kayma ≤ 5°; 12 m'lik 90° sokak köşesi
+  90 km/s'ye kadar gazda alınır, 100+ km/s frensiz alınamaz.
+- **Sürüş stili** (Duraklat menüsü, sadece oyuncu): **MW Sürüş** (varsayılan) / **Arcade** (RVP + yardımlar) / **Gerçekçi** (saf RVP).
   Arcade: direksiyon 0 km/s %100 → 50 %85 → 100 %70 → 150 %60 → 200+ %50; hıza bağlı ek tutuş ("arcade downforce")
   ×1.0 → ×1.6 (120 km/s) → ×1.9 (200); dönüş yardımı (direksiyonun istediği savrulma hızına, tutuşla sınırlı);
   60 km/s üstünde fren+direksiyon → tutuş öne kayar. Aşırı kilit sınırlayıcı: ön lastik tepe kaymasını aşmaz, bu yüzden

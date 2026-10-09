@@ -555,7 +555,7 @@ namespace MostWanted
                 g.player.Teleport(g.world.garagePos + Vector3.up * 0.5f, g.world.garageRot);
                 g.rig.Snap();
             }
-            if (GUILayout.Button("Sürüş stili: " + (d.driveStyle == 0 ? "Arcade" : "Gerçekçi"), btn)) { d.driveStyle = d.driveStyle == 0 ? 1 : 0; SaveSystem.Save(); }
+            { string[] ds = { "MW Sürüş", "Arcade", "Gerçekçi" }; if (GUILayout.Button("Sürüş stili: " + ds[Mathf.Clamp(d.driveStyle, 0, 2)], btn)) { d.driveStyle = (d.driveStyle + 1) % 3; SaveSystem.Save(); } }
             { string[] pd = { "Kolay", "Normal", "Zor" }; if (GUILayout.Button("Polis zorluğu: " + pd[Mathf.Clamp(d.policeDiff, 0, 2)], btn)) { d.policeDiff = (d.policeDiff + 1) % 3; SaveSystem.Save(); } }
             if (GUILayout.Button("Hız çizgileri: " + (d.speedLines ? "Açık" : "Kapalı"), btn)) { d.speedLines = !d.speedLines; SaveSystem.Save(); }
             GUILayout.BeginHorizontal();

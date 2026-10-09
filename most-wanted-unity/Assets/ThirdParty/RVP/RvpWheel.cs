@@ -123,7 +123,7 @@ namespace RVP
             float dep = RvpTire.Dependence(sidewaysSlipDependence, Mathf.Clamp01(fwdSlipForDep));
             float fz = -Mathf.Sign(vz) * RvpTire.SideCurve(sideSlip) * peak * sideMul * dep;
             // low-speed static hold so the car does not creep sideways on cambered roads
-            if (Mathf.Abs(vx) < 1.5f) fz = Mathf.Clamp(-vz / Mathf.Max(dt, 1e-4f) * 0.5f, -peak, peak);
+            if (Mathf.Abs(vx) < 1.5f && sideMul > 0f) fz = Mathf.Clamp(-vz / Mathf.Max(dt, 1e-4f) * 0.5f, -peak, peak);
             Vector3 target = (fwd * fx + right * fz) * m;
             frictionForce = Vector3.Lerp(frictionForce, target, RvpTire.SmoothFactor(frictionSmoothness, dt));
             Vector3 at = hit.point + car.up * forceHeight;

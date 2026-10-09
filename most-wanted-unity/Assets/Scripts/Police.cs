@@ -9,7 +9,7 @@ namespace MostWanted
     /// </summary>
     public class PoliceManager : MonoBehaviour
     {
-        public const float SpeedLimit = 95f;
+        public const float SpeedLimit = 180f;   // takip SADECE polis seni bu hızın üstünde görürse başlar
         public bool pursuit;
         public float heat;            // 1..5.99
         public float cooldown;        // 0..1
@@ -32,7 +32,8 @@ namespace MostWanted
         float spawnTimer, rbTimer, grace, bountyAcc, hitCool, checkTimer, radioTimer;
         int slotCounter;
         bool heliSeenOnce;
-        const int Patrols = 4;
+        bool hintShown;
+        const int Patrols = 3;   // şehirde aynı anda en fazla 3 devriye
 
         static readonly string[] Chatter =
         {
@@ -105,11 +106,16 @@ namespace MostWanted
                 {
                     if (c.car.disabled) continue;
                     float d = U.FlatDist(c.transform.position, pp);
-                    if (d < 60f && kmh > SpeedLimit && U.LineOfSight(c.transform.position + Vector3.up * 2.2f, pp + Vector3.up * 1.2f))
+                    if (d < 220f && !hintShown && PlayerPrefs.GetInt("MW_PolHint", 0) == 0)
+                    {
+                        hintShown = true; PlayerPrefs.SetInt("MW_PolHint", 1);
+                        g.Toast("İpucu: Polis " + Mathf.RoundToInt(SpeedLimit) + " km/s üstünde seni fark eder");
+                    }
+                    if (d < 120f && kmh > SpeedLimit && U.LineOfSight(c.transform.position + Vector3.up * 2.2f, pp + Vector3.up * 1.2f))
                     {
                         StartPursuit();
                         g.Toast("Hız ihlali! Polis peşinde!");
-                        Radio("Merkez, hız ihlali yapan bir araç tespit edildi. Takibe başlıyorum!");
+                        Radio("Merkez, " + Mathf.RoundToInt(kmh) + " km/s ile giden bir araç tespit edildi. Takibe başlıyorum!");
                         break;
                     }
                 }
@@ -210,6 +216,8 @@ namespace MostWanted
             Game.I.rig.Shake(Mathf.Clamp01(rel / 25f));
             if (hitCool > 0f || rel < 4f) return;
             hitCool = 1f;
+            // 0 yıldızda sadece kasıtlı çarpma (> 40 km/s göreli, yandan/önden) takip başlatır
+            if (!pursuit && rel < 40f / 3.6f) return;
             if (!pursuit) { StartPursuit(); Game.I.Toast("Polise çarptın! Takip başladı!"); Radio("Polis aracına saldırı! Tüm birimler!"); }
             heat = Mathf.Min(5.99f, heat + 0.25f);
             bounty += 250;
@@ -295,7 +303,8 @@ namespace MostWanted
             int b = adj[Random.Range(0, adj.Count)];
             Vector3 lp = graph.LanePoint(a, b);
             Vector3 pos = Vector3.Lerp(graph.nodes[a] + (lp - graph.nodes[b]), lp, 0.35f) + Vector3.up * 0.4f;
-            if (U.CarNearby(pos, 5f, null) || U.FlatDist(pos, Game.I.player.transform.position) < 60f) return;
+            if (U.CarNearby(pos, 5f, null) || U.FlatDist(pos, Game.I.player.transform.position) < (chasing ? 60f : 150f)) return;
+            if (!chasing) foreach (var o in cops) if (o != null && U.FlatDist(o.transform.position, pos) < 250f) return;   // devriyeler dağınık
             string role = "patrol";
             int s = Stars;
             float r = Random.value;

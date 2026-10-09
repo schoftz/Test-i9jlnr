@@ -34,7 +34,11 @@ namespace MostWanted
 
         // ---- Fizik modu ----
         public bool driftMode;
-        public bool arcade;                     // oyuncu: Arcade sürüş stili (NFS hissi)
+        public bool arcade;                     // oyuncu: Arcade sürüş stili (RVP + yardımlar)
+        public bool mw;                         // oyuncu: "MW Sürüş" (varsayılan) — doğrudan savrulma/tutuş modeli (MwDrive)
+        [System.NonSerialized] public float mwYaw, mwLat;   // MW: hedeflenen savrulma (rad/s), yanal hız (m/s)
+        bool mwDynHit;
+        float lastBurstLog = -10f; string lastHitName = "-";
         public float camberDeg, rideDrop;       // F&F stance
         public Color headColor = new Color(1f, 0.96f, 0.85f);                  // true: Saarg (WheelCollider), false: RVP
         public float driftLock = 57f;           // drift ayarı direksiyon açısı
@@ -215,7 +219,8 @@ namespace MostWanted
 
         void FixedUpdate()
         {
-            if (rb == null || rb.isKinematic) return;
+            if (rb == null) return;
+            if (rb.isKinematic) { hasLastVel = false; gHas = false; return; }   // kinematik→dinamik geçişte eski hız "patlama" sanılmasın (trafik uyarı spamı)
             if (!driftMode && rvp[0] == null) return;
             if (driftMode && wheels[0] == null) return;
             float dt = Time.fixedDeltaTime;
@@ -230,7 +235,13 @@ namespace MostWanted
                     U.SetVel(rb, v);
                     Vector3 av0 = rb.angularVelocity; rb.angularVelocity = new Vector3(Mathf.Clamp(av0.x, -1f, 1f), av0.y, Mathf.Clamp(av0.z, -1f, 1f));
                     burstCount++;
-                    if (burstCount < 5) Debug.LogWarning("[MW] Fizik patlaması engellendi: " + name);
+                    if (Time.time - lastBurstLog > 5f)
+                    {
+                        lastBurstLog = Time.time;
+                        string under = "?";
+                        for (int wi = 0; wi < 4; wi++) { var gc2 = WheelGroundCollider(wi); if (gc2 != null) { under = gc2.name; break; } }
+                        Debug.LogWarning("[MW] Fizik patlaması engellendi: " + name + " (" + burstCount + ". kez) zemin=" + under + " son çarpışma=" + lastHitName + " konum=" + transform.position.ToString("F0"));
+                    }
                 }
             }
             lastVel = v; hasLastVel = true;
@@ -452,6 +463,7 @@ namespace MostWanted
                     drv = 0f;
                     sideMul *= Mathf.Lerp(1f, 0.75f, handbrakeBlend);
                 }
+                if (mw && !hold) sideMul = 0f;   // MW Sürüş: yanal lastik kuvveti yok (MwStep)
                 w.ApplyFriction(rb, transform, mu, sideMul, drv, bAcc, tcs, spin, forceH, dt);
                 // lastik kayması (1 = yanal tepe): ses, iz, duman için
                 float lat = w.grounded ? Mathf.Abs(w.sideSlip) / 0.1932f : 0f;
@@ -459,6 +471,7 @@ namespace MostWanted
                 wSlip[i] = Mathf.Max(lat, lng + (spin >= 0f && kmh > 15f ? 1.4f : 0f));
             }
 
+            if (mw && !hold) { MwStep(dt, kmh, gc); return; }
             // RVP VehicleAssist: savrulma yardımı (sadece kayarken etkin) — gazdan bağımsız
             if (gc > 0 && !hold)
             {
@@ -475,6 +488,30 @@ namespace MostWanted
                 rb.AddTorque(transform.up * yawAcc, ForceMode.Acceleration);
             }
         }
+
+        /// <summary>MW Sürüş: savrulma hızı doğrudan (ivme sınırlı), yanal hız üstel sönüm; lastik yanal kuvveti yok → spin yok.</summary>
+        void MwStep(float dt, float kmh, int gc)
+        {
+            Vector3 lav = transform.InverseTransformDirection(rb.angularVelocity);
+            if (gc < 2) { mwYaw = lav.y; return; }   // havada: fizik
+            // fiziğin ürettiği savrulma (bordür/basamak/duvar) yok sayılır; sadece araç çarpışmasında kısmen kabul
+            if (mwDynHit) { mwYaw = Mathf.Lerp(mwYaw, lav.y, 0.5f); mwDynHit = false; }
+            Vector3 lv = transform.InverseTransformDirection(U.Vel(rb));
+            bool braking = throttle < -0.1f && lv.z > 2f;
+            float sens = Mathf.Max(0.3f, steerSens) / 1.2f;   // varsayılan 1.2 = tablo
+            float target = MwDrive.TargetYaw(steer, lv.z, sens * steerBoost, braking, handbrakeBlend);
+            mwYaw = MwDrive.StepYaw(mwYaw, target, dt);
+            float lat = lv.x, fw = lv.z;
+            MwDrive.StepVelocity(ref lat, ref fw, mwYaw, kmh, handbrakeBlend, dt);
+            mwLat = lat;
+            U.SetVel(rb, transform.TransformDirection(new Vector3(lat, lv.y, fw)));
+            rb.angularVelocity = transform.TransformDirection(new Vector3(lav.x * 0.9f, mwYaw, lav.z * 0.9f));
+            // his değişkenleri: yanal kayma ve savrulma
+            float s = Mathf.Abs(lat) / 2.2f + (handbrakeBlend > 0.5f && kmh > 20f ? 1.2f : 0f);
+            for (int i = 0; i < 4; i++) wSlip[i] = Mathf.Max(wSlip[i] * (i < 2 ? 0.5f : 1f), s);
+        }
+
+        void OnCollisionStay(Collision c) { if (mw && c.rigidbody != null && !c.rigidbody.isKinematic) mwDynHit = true; }
 
         /// <summary>Drift modu: Saarg Arcade Car Physics (WheelCollider).</summary>
         void ArcadeStep(float dt, float kmh, float fwd, float wheelT, float brk, float g)
@@ -635,6 +672,8 @@ namespace MostWanted
 
         void OnCollisionEnter(Collision c)
         {
+            if (c.collider != null) lastHitName = c.collider.name;
+            if (mw && c.rigidbody != null && !c.rigidbody.isKinematic) mwDynHit = true;
             if (onHit != null) onHit(c);
         }
 

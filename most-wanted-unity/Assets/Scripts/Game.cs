@@ -377,9 +377,20 @@ namespace MostWanted
             {
                 police.OnPlayerHit(c);
                 if (c.rigidbody != null) playerDriver.MarkTouched(c.rigidbody);
-                if (c.relativeVelocity.magnitude > 4f) career.DriftCrash();
-                if (c.relativeVelocity.magnitude > 8f) rig.Shake(Mathf.Clamp01(c.relativeVelocity.magnitude / 30f));
-                if (playerDriver.engineAudio != null) playerDriver.engineAudio.Impact(c.relativeVelocity.magnitude);
+                // gerçek darbe: normal yönünde > 3 m/s ve normal çoğunlukla yatay (bordür/basamak/zemin dikişi sayılmaz)
+                Vector3 n = c.contactCount > 0 ? c.GetContact(0).normal : Vector3.up;
+                float vn = Mathf.Abs(Vector3.Dot(c.relativeVelocity, n));
+                bool realHit = vn > 3f && Mathf.Abs(n.y) < 0.6f;
+                if (realHit)
+                {
+                    var hitCol = c.collider;
+                    string path = hitCol != null ? hitCol.transform.name + (hitCol.transform.parent != null ? " < " + hitCol.transform.parent.name : "") : "?";
+                    Debug.Log("[MW] Çarpışma: " + path + " katman=" + (hitCol != null ? LayerMask.LayerToName(hitCol.gameObject.layer) + "(" + hitCol.gameObject.layer + ")" : "?") +
+                              " v=" + c.relativeVelocity.magnitude.ToString("0.0") + " vn=" + vn.ToString("0.0") + " nokta=" + (c.contactCount > 0 ? c.GetContact(0).point.ToString("F1") : "-") + " normal=" + n.ToString("F2"));
+                    if (vn > 4f) career.DriftCrash();
+                    if (vn > 8f) rig.Shake(Mathf.Clamp01(vn / 30f));
+                    if (playerDriver.engineAudio != null) playerDriver.engineAudio.Impact(vn);
+                }
             };
             var hl = new GameObject("Farlar");
             hl.transform.SetParent(player.transform, false);
