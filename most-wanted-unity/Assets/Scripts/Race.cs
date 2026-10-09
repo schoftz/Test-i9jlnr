@@ -30,7 +30,7 @@ namespace MostWanted
         public bool Counting { get { return Active && countdown > 0f; } }
         public bool IsDrag { get { return def != null && def.type == RaceType.Drag; } }
         Entry playerEntry;
-        GameObject gate;
+        GameObject gate, gate2;
         readonly List<GameObject> markers = new List<GameObject>();
         int lastBeep;
         float endTimer;
@@ -221,8 +221,14 @@ namespace MostWanted
 
         void PlaceGate()
         {
-            if (gate == null || playerEntry == null || IsDrag) { if (gate != null && IsDrag) gate.SetActive(false); return; }
+            if (gate == null || playerEntry == null || IsDrag) { if (gate != null && IsDrag) gate.SetActive(false); if (gate2 != null) gate2.SetActive(false); return; }
             PlaceAt(gate, playerEntry.idx % def.route.Count);
+            // bir sonraki kapı soluk önizleme: yolun nereye gittiği önceden görünsün
+            if (gate2 == null) gate2 = MakeGate(new Color(1f, 0.85f, 0.4f) * 0.45f, "SonrakiKontrol");
+            int nx = playerEntry.idx + 1;
+            bool has = circuit || nx < def.route.Count;
+            gate2.SetActive(has);
+            if (has) { PlaceAt(gate2, nx % def.route.Count); gate2.transform.localScale = new Vector3(0.8f, 0.8f, 0.8f); }
         }
 
         public void Abort()
@@ -235,6 +241,7 @@ namespace MostWanted
             def = null;
             rivalIndex = -1;
             if (gate != null) gate.SetActive(false);
+            if (gate2 != null) gate2.SetActive(false);
             foreach (var m in markers) if (m != null) Destroy(m);
             markers.Clear();
         }
@@ -268,6 +275,28 @@ namespace MostWanted
         }
 
         public int PlayerLap { get { return playerEntry != null ? Mathf.Min(playerEntry.lap + 1, laps) : 0; } }
+        /// <summary>Sıradaki dönüş bilgisi (HUD): dir -1 sol / +1 sağ / 0 düz veya bitiş; dist oyuncudan dönüş noktasına metre; finish = son kapı.</summary>
+        public bool NextTurn(out int dir, out float dist, out bool finish)
+        {
+            dir = 0; dist = 0f; finish = false;
+            if (playerEntry == null || def == null || IsDrag || playerEntry.car == null) return false;
+            var r = def.route; int n = r.Count;
+            Vector3 from = playerEntry.car.transform.position;
+            int i = playerEntry.idx % n;
+            for (int k = 0; k < 4; k++)
+            {
+                dist += U.FlatDist(from, r[i]);
+                bool last = !circuit && i >= n - 1;
+                if (last) { finish = true; return true; }
+                Vector3 a = U.Flat(r[i] - (i > 0 ? r[i - 1] : circuit ? r[n - 1] : from));
+                Vector3 b = U.Flat(r[(i + 1) % n] - r[i]);
+                float ang = Vector3.SignedAngle(a, b, Vector3.up);
+                if (Mathf.Abs(ang) > 25f) { dir = ang > 0f ? 1 : -1; return true; }
+                from = r[i]; i = (i + 1) % n;
+            }
+            return true;
+        }
+
         public Vector3 NextCheckpoint { get { return playerEntry != null ? (IsDrag ? def.route[1] : def.route[playerEntry.idx % def.route.Count]) : Vector3.zero; } }
 
         // ---------------------------------------------------------------- drag yardımcıları
@@ -430,6 +459,7 @@ namespace MostWanted
             }
             SaveSystem.Save();
             if (gate != null) gate.SetActive(false);
+            if (gate2 != null) gate2.SetActive(false);
             playerEntry.car.locked = false;
             playerEntry.car.manualGearbox = false;
         }

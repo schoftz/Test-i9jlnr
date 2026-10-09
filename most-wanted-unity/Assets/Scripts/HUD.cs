@@ -254,6 +254,18 @@ namespace MostWanted
             Rect(new Rect(W / 2 - 100, 36, 200, 40), PanelCol);
             Shadow(new Rect(W / 2 - 100, 36, 200, 40), RaceManager.FormatTime(t), Align(numSmall, TextAnchor.MiddleCenter));
 
+            // yön göstergesi: sıradaki dönüş (NFS tarzı) — mesafe ile birlikte, yaklaşınca yanıp söner
+            int tdir; float tdist; bool tfin;
+            if (r.NextTurn(out tdir, out tdist, out tfin) && r.countdown <= 0f)
+            {
+                string arrow = tfin ? "BİTİŞ" : tdir < 0 ? "<<<  SOLA DÖN" : tdir > 0 ? "SAĞA DÖN  >>>" : "DÜZ DEVAM";
+                bool near = !tfin && tdir != 0 && tdist < 70f;
+                float blink = near ? 0.6f + 0.4f * Mathf.Sin(Time.time * 14f) : 1f;
+                Color pc = near ? new Color(1f, 0.45f, 0.05f, 0.92f * blink) : PanelCol;
+                Rect(new Rect(W / 2 - 210, 84, 420, 52), pc);
+                Shadow(new Rect(W / 2 - 210, 84, 420, 52), arrow + "   " + Mathf.RoundToInt(tdist) + " m", Align(numSmall, TextAnchor.MiddleCenter));
+            }
+
             // sağ üst: TUR x / n (tur yarışı) veya radar toplamı
             if (r.circuit)
             {
