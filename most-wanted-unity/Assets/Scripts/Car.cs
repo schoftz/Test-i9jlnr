@@ -86,6 +86,7 @@ namespace MostWanted
         public float ForwardSpeed { get { return Vector3.Dot(U.Vel(rb), transform.forward); } }
         public float Rpm01 { get { return Mathf.Clamp01(rpm / redline); } }
         public float SteerDeg { get { return curSteer; } }
+        public Vector3 PrevVel { get { return hasLastVel ? lastVel : U.Vel(rb); } }
 
         // ---- tekerlek sorguları (iki mod için ortak; ses/efekt kodu bunları kullanır) ----
         public bool WheelGrounded(int i)

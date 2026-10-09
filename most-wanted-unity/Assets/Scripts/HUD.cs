@@ -170,11 +170,11 @@ namespace MostWanted
                 GUI.Label(new Rect(W / 2 - 200, 6, 400, 56), stars, st);
                 var c = Align(small, TextAnchor.MiddleCenter);
                 Shadow(new Rect(W / 2 - 230, 58, 460, 24), "ÖDÜL " + U.Money(pol.bounty) + "   •   POLİS " + pol.CopCount + (pol.heli != null ? "   •   HELİKOPTER" : "") + "   •   " + RaceManager.FormatTime(pol.pursuitTime).Substring(0, 5), c);
-                Shadow(new Rect(W / 2 - 230, 82, 460, 22), pol.Seen ? "GÖRÜLDÜN!" : pol.Hiding ? "SAKLANIYORSUN" : "SAKİNLEŞME", Align(tiny, TextAnchor.MiddleCenter));
+                Shadow(new Rect(W / 2 - 230, 82, 460, 22), pol.Seen ? "GÖRÜLDÜN — Polislerin görüş alanından çık" : pol.Hiding ? "SAKLANIYORSUN" : "SAKİNLEŞME — saklanma noktalarına git (haritada mavi)", Align(tiny, TextAnchor.MiddleCenter));
                 Bar(new Rect(W / 2 - 180, 106, 360, 12), pol.Seen ? 0f : pol.cooldown, new Color(0.2f, 0.9f, 0.4f));
                 if (pol.bustProgress > 0.01f)
                 {
-                    Shadow(new Rect(W / 2 - 230, 122, 460, 22), "YAKALANIYORSUN!", Align(tiny, TextAnchor.MiddleCenter));
+                    Shadow(new Rect(W / 2 - 230, 122, 460, 22), "YAKALANIYORSUN! Hareket et!", Align(tiny, TextAnchor.MiddleCenter));
                     Bar(new Rect(W / 2 - 180, 146, 360, 12), pol.bustProgress, Color.red);
                 }
             }
@@ -447,6 +447,21 @@ namespace MostWanted
                 Rect(new Rect(pos.x - 7, pos.y - 7, 14, 14), tc);
                 Shadow(new Rect(mr.x, mr.y - 28, ms, 28), Mathf.RoundToInt(U.FlatDist(p.transform.position, target.Value)) + " m", Align(small, TextAnchor.MiddleCenter));
             }
+            // takipte saklanma noktaları (sakinleşme sırasında)
+            if (g.police.pursuit && !g.police.Seen)
+            {
+                float half = ms / 2f;
+                foreach (var h in g.world.hiding)
+                {
+                    Vector3 d = p.transform.InverseTransformDirection(h.bounds.center - p.transform.position);
+                    Vector2 pos = new Vector2(d.x, -d.z) / Mathf.Max(1f, g.mapCam.orthographicSize) * half;
+                    if (pos.magnitude > half - 10f) continue;
+                    pos += c;
+                    bool blink = Mathf.Repeat(Time.unscaledTime, 0.8f) < 0.55f;
+                    Rect(new Rect(pos.x - 8, pos.y - 8, 16, 16), blink ? Blue : new Color(0.1f, 0.2f, 0.5f, 0.9f));
+                    GUI.Label(new Rect(pos.x - 8, pos.y - 9, 16, 16), "S", lblSmall);
+                }
+            }
             // kuzey göstergesi (araç yönü yukarı)
             float yaw = p.transform.eulerAngles.y * Mathf.Deg2Rad;
             Vector2 n = c + new Vector2(-Mathf.Sin(yaw), -Mathf.Cos(yaw)) * (ms / 2f - 14f);
@@ -544,6 +559,7 @@ namespace MostWanted
                 g.player.Teleport(g.world.garagePos + Vector3.up * 0.5f, g.world.garageRot);
                 g.rig.Snap();
             }
+            { string[] pd = { "Kolay", "Normal", "Zor" }; if (GUILayout.Button("Polis zorluğu: " + pd[Mathf.Clamp(d.policeDiff, 0, 2)], btn)) { d.policeDiff = (d.policeDiff + 1) % 3; SaveSystem.Save(); } }
             if (GUILayout.Button("Hız çizgileri: " + (d.speedLines ? "Açık" : "Kapalı"), btn)) { d.speedLines = !d.speedLines; SaveSystem.Save(); }
             GUILayout.BeginHorizontal();
             GUILayout.Label("Direksiyon hassasiyeti: " + d.steerSens.ToString("0.00"), small, GUILayout.Width(250));

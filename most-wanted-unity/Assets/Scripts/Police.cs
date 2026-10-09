@@ -46,6 +46,22 @@ namespace MostWanted
 
         public void Radio(string s) { radio = s; radioTime = 5f; }
 
+        // ---- denge (Polis zorluğu: 0 Kolay, 1 Normal, 2 Zor) ----
+        public static int Diff { get { return Mathf.Clamp(SaveSystem.Data.policeDiff, 0, 2); } }
+        static readonly int[] PursuerCap = { 2, 3, 4, 5, 6 };
+        /// <summary>Aktif takipçi sınırı: 1–5 yıldız → 2/3/4/5/6 (Kolay bir eksik, en az 2).</summary>
+        public int MaxPursuers { get { int c = PursuerCap[Mathf.Clamp(Stars, 1, 5) - 1]; return Diff == 0 ? Mathf.Max(2, c - 1) : c; } }
+        /// <summary>Polis azami hızı / oyuncu azami hızı: 1–2 yıldızda %90–95, sonra artar.</summary>
+        public float SpeedFactor { get { float[] low = { 0.90f, 0.93f, 0.95f }; return Stars <= 2 ? low[Diff] : low[Diff] + 0.05f * (Stars - 2); } }
+        /// <summary>Görülmeden sakinleşme süresi (sn): 1–2 yıldızda 20/25/30, yüksek yıldızda daha kısa.</summary>
+        public float CooldownTime { get { float[] low = { 20f, 25f, 30f }; float b = low[Diff]; return Stars <= 2 ? b : b * (1f - 0.12f * (Stars - 2)); } }
+        /// <summary>Çarpma arası bekleme (sn, araç başına): 1–2 yıldızda 6–8, 3+ yıldızda kısa.</summary>
+        public float RamInterval { get { return Stars <= 2 ? Random.Range(6f, 8f) + (Diff == 0 ? 1f : Diff == 2 ? -0.5f : 0f) : Mathf.Max(2f, 5f - (Stars - 3) - Diff * 0.5f); } }
+        /// <summary>Oyuncuya çarpışmada izin verilen azami hız değişimi (m/s).</summary>
+        public float ImpulseCap { get { float[] b = { 3f, 4f, 5f }; return b[Diff] + Mathf.Max(0, Stars - 2) * 1.2f; } }
+        public float BustTime { get { float[] b = { 5f, 4f, 3.5f }; return b[Diff]; } }
+        public int PursuerCount { get { int n = 0; foreach (var c in cops) if (c != null && !c.roadblock && !c.car.disabled) n++; return n; } }
+
         void Update()
         {
             var g = Game.I;
@@ -58,9 +74,10 @@ namespace MostWanted
 
             if (g.race.Active && pursuit) EndPursuit(false);
 
-            int want = pursuit ? Mathf.Min(2 + Stars * 2, maxUnits) : Patrols;
+            int want = pursuit ? Mathf.Min(MaxPursuers, maxUnits) : Patrols;
+            int have = pursuit ? PursuerCount : cops.Count;
             spawnTimer -= dt;
-            if (cops.Count < want && spawnTimer <= 0f)
+            if (have < want && spawnTimer <= 0f)
             {
                 spawnTimer = pursuit ? 2.2f : 1f;
                 SpawnCop(pp, pursuit);
@@ -74,6 +91,7 @@ namespace MostWanted
                 {
                     var c = cops[i];
                     float d = U.FlatDist(c.transform.position, pp);
+                    if (pursuit && !c.roadblock && g.player != null) c.car.topSpeed = Mathf.Max(150f, g.player.topSpeed * SpeedFactor);
                     bool remove = (!pursuit && d > 450f) || (pursuit && d > 650f) || (!pursuit && cops.Count > Patrols && d > 140f) || (c.car.disabled && d > 160f);
                     if (remove) { Destroy(c.gameObject); cops.RemoveAt(i); }
                 }
@@ -100,7 +118,7 @@ namespace MostWanted
 
             // ---- Takip ----
             pursuitTime += dt;
-            heat = Mathf.Min(5.99f, heat + dt / 45f);
+            heat = Mathf.Min(5.99f, heat + dt / (Diff == 0 ? 70f : Diff == 1 ? 55f : 40f));
             bountyAcc += dt * Stars * 25f;
             if (bountyAcc >= 1f) { int add = Mathf.FloorToInt(bountyAcc); bounty += add; bountyAcc -= add; }
 
@@ -130,7 +148,7 @@ namespace MostWanted
                 float d = U.FlatDist(c.transform.position, pp);
                 if (d < nearest) nearest = d;
                 if (d < 9f) nearCount++;
-                if (d < 40f || (d < 170f && U.LineOfSight(c.transform.position + Vector3.up * 2.2f, pp + Vector3.up * 1.2f))) seen = true;
+                if (d < 40f || (d < 120f && U.LineOfSight(c.transform.position + Vector3.up * 2.2f, pp + Vector3.up * 1.2f))) seen = true;
             }
             Hiding = g.world.InHiding(pp);
             if (Hiding && nearest > 25f) seen = false;
@@ -142,16 +160,18 @@ namespace MostWanted
                 if (heli.SeesPlayer) { seen = true; heliSeenOnce = true; }
             }
             Seen = seen;
-            if (seen) cooldown = Mathf.Max(0f, cooldown - dt * 0.6f);
+            if (seen) cooldown = Mathf.Max(0f, cooldown - dt * 0.5f);
             else
             {
-                cooldown += dt / (9f + Stars * 3f) * (Hiding ? 2.5f : 1f);
+                cooldown += dt / CooldownTime * (Hiding ? 2f : 1f);
                 if (cooldown >= 1f) { Escape(); return; }
             }
 
             // yakalanma: düşük hız + yakında polis (kutulanmışsan daha hızlı)
-            if (kmh < 8f && nearest < 9f) bustProgress += dt / (nearCount >= 2 ? 2.2f : 3.2f);
-            else bustProgress = Mathf.Max(0f, bustProgress - dt * 0.6f);
+            // yakalanma: sadece 5 km/s altında VE kutulanmışken (2+ polis yanında, ya da 1 polis + gaza rağmen ilerleyemiyor) BustTime sn
+            bool boxed = nearCount >= 2 || (nearCount >= 1 && Mathf.Abs(g.player.throttle) > 0.5f);
+            if (kmh < 5f && nearest < 9f && boxed) bustProgress += dt / BustTime;
+            else bustProgress = Mathf.Max(0f, bustProgress - dt * (kmh > 15f ? 1.2f : 0.6f));
             if (bustProgress >= 1f) { Busted(); return; }
 
             // barikat
@@ -177,6 +197,16 @@ namespace MostWanted
             float rel = c.relativeVelocity.magnitude;
             if (c.contactCount > 0 && Mathf.Abs(c.GetContact(0).normal.y) > 0.7f) return; // üstten/alttan temas sayılmaz
             if (rel > 4f) cop.car.Damage(rel * (cop.role == "suv" ? 1.6f : 2.6f));
+            // çarpışma itkisini sınırla: oyuncunun tek çarpışmadaki hız değişimi ImpulseCap'i aşmasın
+            var pl = Game.I.player;
+            if (pl != null && !pl.rb.isKinematic)
+            {
+                Vector3 before = pl.PrevVel, now = U.Vel(pl.rb), dv = now - before;
+                float cap = ImpulseCap;
+                if (dv.magnitude > cap) U.SetVel(pl.rb, before + dv.normalized * cap);
+                Vector3 av = pl.rb.angularVelocity;
+                pl.rb.angularVelocity = new Vector3(av.x, Mathf.Clamp(av.y, -1.6f, 1.6f), av.z);
+            }
             Game.I.rig.Shake(Mathf.Clamp01(rel / 25f));
             if (hitCool > 0f || rel < 4f) return;
             hitCool = 1f;
@@ -273,9 +303,10 @@ namespace MostWanted
             if (chasing && s >= 4 && r > 0.55f) role = "suv";
             var def = role == "undercover" ? Catalog.PoliceUndercover : role == "suv" ? Catalog.PoliceSuv : Catalog.PolicePatrol;
             var car = CarFactory.BuildPolice(def, role, pos, Quaternion.LookRotation(U.Flat(graph.nodes[b] - graph.nodes[a]).normalized));
-            // polis performansı: aranma seviyesiyle artar
-            car.peakTorque *= 1f + 0.05f * s;
-            car.topSpeed = Mathf.Max(car.topSpeed, 230f + s * 12f);
+            // polis performansı: azami hız oyuncunun azami hızına bağlı (1–2 yıldızda %90–95), tork 3+ yıldızda artar
+            float pTop = Game.I.player != null ? Game.I.player.topSpeed : 220f;
+            if (s >= 3) car.peakTorque *= 1f + 0.05f * (s - 2);
+            car.topSpeed = Mathf.Max(150f, pTop * SpeedFactor);
             car.dragK = CarMath.DragCoef(car.peakTorque, car.topSpeed, car.redline, car.wheelRadius, car.ratios);
             car.finalDrive = CarMath.FinalDrive(car.topSpeed, car.redline, car.wheelRadius, car.ratios);
             var d = car.gameObject.AddComponent<PoliceDriver>();

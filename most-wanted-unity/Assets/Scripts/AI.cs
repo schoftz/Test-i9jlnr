@@ -129,43 +129,99 @@ namespace MostWanted
         List<int> path = new List<int>();
         int pathIdx;
         float repath;
+        // tepki gecikmesi (0.4–0.8 sn): oyuncunun geçmiş konum/hızı
+        const int Hist = 64;
+        readonly Vector3[] hPos = new Vector3[Hist], hVel = new Vector3[Hist];
+        readonly float[] hT = new float[Hist];
+        int hHead, hCount;
+        float reaction = -1f, noiseSeed, ramTimer, ramTry;
+
+        void Record(Vector3 p, Vector3 v)
+        {
+            hHead = (hHead + 1) % Hist; hPos[hHead] = p; hVel[hHead] = v; hT[hHead] = Time.time;
+            if (hCount < Hist) hCount++;
+        }
+
+        void Delayed(out Vector3 p, out Vector3 v)
+        {
+            float want = Time.time - reaction;
+            int idx = hHead;
+            for (int k = 0; k < hCount; k++)
+            {
+                int i = (hHead - k + Hist) % Hist;
+                idx = i;
+                if (hT[i] <= want) break;
+            }
+            p = hPos[idx]; v = hVel[idx];
+        }
 
         protected override void Think()
         {
             if (car.Damage0Check()) return;
+            if (reaction < 0f) { reaction = Random.Range(0.4f, 0.8f); noiseSeed = Random.value * 100f; ramTimer = Random.Range(2f, 5f); }
             if (!pursuing) { cruiseKmh = 45f; base.Think(); return; }
             var player = Game.I.player;
             if (player == null) { base.Think(); return; }
-            Vector3 pp = player.transform.position;
-            Vector3 pv = U.Vel(player.rb);
+            var pm = Game.I.police;
+            float dt = Time.fixedDeltaTime;
+            ramTimer -= dt;
+            Record(player.transform.position, U.Vel(player.rb));
+            Vector3 pp, pv;
+            Delayed(out pp, out pv);
             float dist = U.FlatDist(transform.position, pp);
             bool los = dist < 45f || U.LineOfSight(transform.position + Vector3.up * 2.2f, pp + Vector3.up * 1.2f);
-            float maxK = car.topSpeed * 1.05f;
+            float maxK = car.topSpeed;
+            float pk = player.SpeedKmh;
+            bool aggressive = pm.Stars >= 3;
+            // direksiyon kusuru: yavaş değişen yanal hedef sapması
+            Vector3 fw = U.Flat(transform.forward).normalized;
+            Vector3 side = new Vector3(fw.z, 0, -fw.x);
+            float wobble = (Mathf.PerlinNoise(Time.time * 0.45f + noiseSeed, noiseSeed) - 0.5f) * (aggressive ? 2.2f : 3.6f);
 
             if (los)
             {
                 Vector3 pf = U.Flat(player.transform.forward).normalized;
                 Vector3 pr = new Vector3(pf.z, 0, -pf.x);
                 Vector3 aim;
-                bool ram = role == "suv" || Game.I.police.Stars >= 4;
-                if (dist > 30f) aim = pp + pv * Mathf.Clamp(dist / 40f, 0f, 1.5f);
-                else if (ram) aim = pp + pv * 0.25f;
+                float desired;
+                // çarpma: araç başına sınırlı sıklıkta, ve bu polis oyuncudan +15 km/s'ten hızlıysa asla
+                bool ramming = ramTimer <= 0f && dist < 16f && car.SpeedKmh <= pk + 15f && (aggressive || role == "suv" || pm.Stars >= 1);
+                if (ramming)
+                {
+                    ramTry += dt;
+                    if (ramTry > 2f) { ramTry = 0f; ramTimer = pm.RamInterval; }
+                    aim = pp + pv * 0.25f;
+                    desired = pk + 12f;
+                }
+                else if (dist > 30f)
+                {
+                    aim = pp + pv * Mathf.Clamp(dist / 40f, 0f, 1.5f) + side * wobble;
+                    desired = maxK;
+                }
+                else if (!aggressive)
+                {
+                    // 1–2 yıldız: çoğunlukla takip — arkada ~10 m, hızı eşle
+                    aim = pp - pf * 10f + pv * 0.3f + side * wobble * 0.5f;
+                    desired = pk + Mathf.Clamp(dist - 10f, -15f, 15f);
+                }
                 else
                 {
-                    // kutulama pozisyonları: arka, sol, sağ, ön
+                    // 3+ yıldız: kutulama pozisyonları (arka, sol, sağ, ön)
                     Vector3 off = slot % 4 == 0 ? -pf * 4f : slot % 4 == 1 ? -pr * 3.2f + pf * 1f : slot % 4 == 2 ? pr * 3.2f + pf * 1f : pf * 8f;
                     aim = pp + off + pv * 0.35f;
+                    desired = Mathf.Max(pk + 8f, 30f);
                 }
-                float desired = dist < 12f ? Mathf.Max(player.SpeedKmh + (ram ? 25f : 8f), 30f) : maxK;
-                car.nitroInput = dist > 50f && dist < 250f;
-                DriveTo(aim, desired, false, 1.4f);
+                if (dist < 30f) desired = Mathf.Min(desired, pk + 15f);
+                desired = Mathf.Min(desired, maxK);
+                car.nitroInput = aggressive && dist > 60f && dist < 250f;
+                DriveTo(aim, desired, false, 1.0f);
                 path.Clear();
             }
             else
             {
                 car.nitroInput = false;
                 var g = Game.I.world.graph;
-                repath -= Time.fixedDeltaTime;
+                repath -= dt;
                 if (path.Count == 0 || repath <= 0f)
                 {
                     repath = 1.5f;
@@ -176,7 +232,18 @@ namespace MostWanted
                 while (pathIdx < path.Count - 1 && U.FlatDist(transform.position, g.nodes[path[pathIdx]]) < 12f) pathIdx++;
                 Vector3 t = g.nodes[path[pathIdx]];
                 float dn = U.FlatDist(transform.position, t);
-                DriveTo(t, dn < 35f ? 70f : maxK * 0.85f, false, 1.2f);
+                float want = maxK * 0.85f;
+                // gerçekçi viraj frenlemesi: sonraki düğümdeki dönüş açısına göre, frenleme mesafesi içinde yavaşla
+                if (pathIdx < path.Count - 1)
+                {
+                    Vector3 n1 = g.nodes[path[pathIdx + 1]];
+                    float turn = Vector3.Angle(U.Flat(t - transform.position), U.Flat(n1 - t));
+                    float cornerK = Mathf.Lerp(want, 35f, Mathf.Clamp01((turn - 15f) / 75f));
+                    float v = car.SpeedKmh / 3.6f, vc = cornerK / 3.6f;
+                    float brakeDist = Mathf.Max(0f, (v * v - vc * vc) / (2f * 7f)) + v * reaction;
+                    if (dn < brakeDist + 8f) want = Mathf.Min(want, cornerK);
+                }
+                DriveTo(t + side * wobble * 0.4f, want, false, 1.0f);
             }
         }
 
@@ -185,6 +252,7 @@ namespace MostWanted
             if (roadblock || c.rigidbody == null) return;
             float rel = c.relativeVelocity.magnitude;
             if (c.rigidbody.GetComponent<BreakerPiece>() != null && rel > 3f) car.Damage(250f);
+            if (Game.I != null && Game.I.player != null && c.rigidbody == Game.I.player.rb) { ramTimer = Game.I.police.RamInterval; ramTry = 0f; }
         }
     }
 

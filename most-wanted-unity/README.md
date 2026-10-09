@@ -119,6 +119,19 @@ Kazanç: yarış ₺2.200–7.500 (2.: %40, 3.: %14), teslimat ₺600–3.000, p
 Ortalama ~₺1.000–1.500/dk → bir sonraki araç yaklaşık 20–40 dk. Performans paketi fiyatı aracın kademesine göre
 (₺500 + fiyatın %5'i × seviye); satış %60. Başlangıç parası ₺12.000.
 
+### Polis dengesi
+Duraklat → **Polis zorluğu**: Kolay (varsayılan) / Normal / Zor.
+- Aktif takipçi sınırı 1–5 yıldızda 2/3/4/5/6 (Kolay'da bir eksik). Polis azami hızı oyuncunun %90/93/95'i (1–2 yıldız),
+  her yıldızda +%5. Tepki gecikmesi 0.4–0.8 sn, direksiyon kusuru, yolda virajdan önce gerçekçi frenleme.
+- 1–2 yıldız: polis çoğunlukla arkadan takip eder; araç başına 6–8 sn'de en fazla bir çarpma; oyuncudan 15 km/s'ten
+  hızlıysa asla çarpmaz. 3+ yıldız: kutulama, daha sık çarpma, nitro, barikat/çivili şerit.
+- Çarpışmada oyuncunun hız değişimi sınırlı (Kolay 3 m/s … + yıldız başına 1.2).
+- Görülmek: 40 m içinde ya da 120 m içinde görüş hattında. Görülünce HUD: "Polislerin görüş alanından çık".
+  Görülmeyince sakinleşme dolar: 1–2 yıldızda 20/25/30 sn (zorluğa göre), üst yıldızlarda daha kısa; saklanma
+  noktasında 2× hızlı. Sakinleşmede mini haritada yanıp sönen **S** saklanma noktaları.
+- Yakalanma: sadece 5 km/s altında ve kutulanmışken (2 polis yanında, ya da 1 polis + gaza rağmen ilerleyememe),
+  4 sn (Kolay 5, Zor 3.5); ekranda "YAKALANIYORSUN!" çubuğu.
+
 ### Sürüş fiziği (iki mod, araç başına tek kontrolcü)
 - **Normal mod — Randomation Vehicle Physics (RVP, JustInvoke, MIT)** — tüm araçlar, trafik, polis, rakipler.
   `Assets/ThirdParty/RVP`: ışın-izli süspansiyon (RVP `Suspension`), RVP lastik eğrileri ve kayma hesabı
