@@ -95,6 +95,26 @@ namespace MostWanted
             if (p.Stars >= 5) Award("heat5");
         }
 
+        // ---- Serbest sürüş drift puanı: açı × hız × süre × çarpan; zincir: drift bitince 1.5 sn içinde yenisi başlarsa sürer ----
+        public float driftMult = 1f, driftChain;   // driftChain: 0..1 (zincir süresi göstergesi)
+        float driftHold;
+        public void DriftTick(float angle, float kmh, float dt)
+        {
+            if (angle > 12f && kmh > 40f)
+            {
+                driftIdle = 0f;
+                driftHold += dt;
+                driftMult = Mathf.Min(5f, 1f + Mathf.Floor(driftHold / 2f));      // her 2 sn kesintisiz drift +1 çarpan
+                driftScore += Mathf.Min(angle, 60f) * kmh * dt * 0.02f * driftMult;
+            }
+        }
+        /// <summary>Çarpışma: zincir kopar, puan kaybolur.</summary>
+        public void DriftCrash()
+        {
+            if (driftScore <= 0f) return;
+            Game.I.Toast("Drift zinciri koptu! (" + Mathf.RoundToInt(driftScore) + " puan kayıp)");
+            driftScore = 0f; driftShow = 0f; driftMult = 1f; driftHold = 0f; driftIdle = 0f;
+        }
         public void AddDrift(float pts) { driftScore += pts; driftIdle = 0f; }
 
         void Award(string id)
@@ -112,7 +132,9 @@ namespace MostWanted
             if (g == null || g.player == null) return;
             // drift puanı: drift bitince bankala
             driftIdle += Time.deltaTime;
-            if (driftScore > 0f && driftIdle > 1.2f)
+            driftChain = driftScore > 0f ? Mathf.Clamp01(1f - driftIdle / 1.5f) : 0f;
+            if (driftIdle > 0.4f) driftHold = Mathf.Max(0f, driftHold - Time.deltaTime * 2f);   // düzelince çarpan birikimi söner
+            if (driftScore > 0f && driftIdle > 1.5f)
             {
                 if (driftScore > 200f)
                 {
@@ -122,7 +144,7 @@ namespace MostWanted
                     if (driftScore >= 3000f) Award("drift");
                 }
                 driftShow = 0f;
-                driftScore = 0f;
+                driftScore = 0f; driftMult = 1f; driftHold = 0f;
             }
             else driftShow = driftScore;
 

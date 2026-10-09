@@ -90,6 +90,14 @@ namespace MostWanted
             car.SetPhysicsMode(false);   // varsayılan: RVP; drift ayarı Game tarafından garaj çıkışında açılır
             car.Configure(def, tune);
 
+            // parça bilgisi + F&F kiti (sadece oyuncunun drift aracı)
+            car.parts = MakeParts(def, vis, body, wi, paintMats, headMats, exhaustTips);
+            if (role == CarRole.Player && CustomCatalog.IsDriftCar(def))
+            {
+                var cs = CustomCatalog.Get(SaveSystem.Get(def.id));
+                if (cs != null) CustomKit.Apply(car.parts, cs, car, false);
+            }
+
             // efektler
             AddEffects(car, body, role, exhaustTips, def);
 
@@ -554,6 +562,43 @@ namespace MostWanted
         }
 
         /// <summary>Park etmiş araç: sadece görsel + kutu çarpıştırıcı (fizik yok).</summary>
+        static CarParts MakeParts(CarEntry def, Transform vis, Bounds body, WheelInfo[] wi, List<Material> pm, List<Material> hm, List<Vector3> tips)
+        {
+            var p = new CarParts { def = def, vis = vis, body = body, paintMats = pm, headMats = hm, tips = tips ?? new List<Vector3>() };
+            var w = (WheelInfo[])wi.Clone();
+            if ((w[0].pos.z + w[1].pos.z) < (w[2].pos.z + w[3].pos.z)) { var t0 = w[0]; var t1 = w[1]; w[0] = w[2]; w[1] = w[3]; w[2] = t0; w[3] = t1; }
+            if (w[0].pos.x > w[1].pos.x) { var t = w[0]; w[0] = w[1]; w[1] = t; }
+            if (w[2].pos.x > w[3].pos.x) { var t = w[2]; w[2] = w[3]; w[3] = t; }
+            for (int i = 0; i < 4; i++) { p.wPos[i] = w[i].pos; p.wR[i] = w[i].radius; p.wVis[i] = w[i].vis; }
+            return p;
+        }
+
+        /// <summary>Garaj vitrini için fiziksiz araç (görsel + parça bilgisi). Kök = dönen tabla üstü.</summary>
+        public static CarParts BuildShowroom(CarEntry def, PaintDef? paint, Transform parent)
+        {
+            var go = new GameObject("VitrinAraci");
+            go.transform.SetParent(parent, false);
+            var vis = new GameObject("Gorsel").transform;
+            vis.SetParent(go.transform, false);
+            Bounds body = new Bounds(new Vector3(0, 0.75f, 0), new Vector3(1.9f, 1.3f, def.length));
+            var pm = new List<Material>(); var bm = new List<Material>(); var hm = new List<Material>();
+            WheelInfo[] wi = null; List<Vector3> tips = null;
+            if (def.prefab != null) { try { wi = FitModel(def, vis, ref body, pm, bm, hm); tips = FindExhaustTips(vis); } catch (System.Exception) { wi = null; } }
+            if (wi == null)
+            {
+                for (int i = vis.childCount - 1; i >= 0; i--) Object.Destroy(vis.GetChild(i).gameObject);
+                pm.Clear(); hm.Clear();
+                wi = ProceduralBody(def, vis, ref body, pm, bm, hm);
+            }
+            if (paint.HasValue) foreach (var m in pm) U.ApplyPaint(m, paint.Value);
+            foreach (var m in bm) U.SetEmission(m, new Color(1f, 0.05f, 0.03f) * 0.6f);
+            foreach (var m in hm) U.SetEmission(m, new Color(2.5f, 2.4f, 2.1f));
+            // tekerlek altları tablaya otursun
+            float gy = 0f; foreach (var w in wi) gy += w.pos.y - w.radius; gy /= 4f;
+            vis.localPosition = new Vector3(0, -gy, -body.center.z);
+            return MakeParts(def, vis, body, wi, pm, hm, tips);
+        }
+
         public static GameObject BuildStatic(CarEntry def, PaintDef paint)
         {
             var go = new GameObject("ParkEtmisArac");

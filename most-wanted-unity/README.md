@@ -119,6 +119,32 @@ Kazanç: yarış ₺2.200–7.500 (2.: %40, 3.: %14), teslimat ₺600–3.000, p
 Ortalama ~₺1.000–1.500/dk → bir sonraki araç yaklaşık 20–40 dk. Performans paketi fiyatı aracın kademesine göre
 (₺500 + fiyatın %5'i × seviye); satış %60. Başlangıç parası ₺12.000.
 
+### Garaj (NFS Carbon "ARABA SEÇ" tarzı)
+Garaja girince dünya durur ve araç y = -2000'deki karanlık showroom'a geçer: yansıtıcı zemin, mor/turkuaz spotlar,
+neon şeritler, sis, dönen tabla, kendi kamerası (fare sürükle = döndür, tekerlek = yakınlaştır).
+Üst sağda SON HIZ / İVME / YOL TUTUŞ çubukları, Para ve Değer; altta sınıf (TUNER/KAS/EGZOTİK, SEVİYE 1–3),
+`<  ARAÇ ADI  >` (←/→), sahip/satın al durumu. Tuşlar: Geri (Esc) • Seç/Satın Al (Enter) • Boya (P) • Performans (U) •
+Motor Sesi (S) • Özelleştir (C, sadece drift araçları) • Sat (Del) • Fotoğraf (F12).
+
+### Drift Araçları + F&F özelleştirme (Supra, R34, R35, M4)
+Özelleştir menüsü (canlı önizleme, ↑/↓ kategori, ←/→ seçenek, Enter satın al/uygula; alınan seçenekler kalıcı):
+ön lip/karbon splitter, marşpiyel, karbon difüzör, geniş kasa, spoiler (ducktail / GT / dev F&F kanadı), havalandırmalı
+veya karbon kaput, tavan scoop, 6 jant stili + 7 renk, sürüş yüksekliği (-2/-4/-6 cm), kamber (2/4/7°), neon alt ışık
+(6 renk + nokta ışık), cam filmi, far rengi, vinil (yarış şeritleri, R34 mavi/gümüş, yan grafik, alevler — kutu eşlemeli
+ikinci malzeme katmanı, `MostWanted/Vinyl`), NOS / 走り屋 çıkartmaları, "FAST" plaka, egzoz ucu (4 stil) ve
+**DRIFT AYARI**. Fiyatlar araç kademesine göre ölçeklenir; araç başına kayıt (`CarSave.custom`, PlayerPrefs JSON).
+Kit parçaları tek birleşik mesh + paylaşılan malzemeler; jantlar stil başına tek paylaşılan mesh.
+Drift ayarı açıkken garajdan çıkışta araç Saarg (Arcade Car Physics) kontrolcüsüne geçer.
+
+**Drift puanı** (serbest sürüş): açı × hız × süre × çarpan (her 2 sn kesintisiz drift +1, en fazla ×5); düzeltip
+1.5 sn içinde yeni drift başlamazsa puan bankalanır (para ödülü), çarpışma zinciri koparır. HUD: puan, çarpan, zincir çubuğu.
+
+### Sürüş hissi
+Kamera dönüşe ~0.2 sn gecikmeyle girer, virajın dışına kayar, yanal g ile 1–3° yatar, yüksek yanal g'de FOV nabzı,
+kaymada hafif sarsıntı. Görsel gövde (fizik değil) yanal/boyuna ivmeyle 2–4° yatar ve yunuslar. Lastik ciyaklaması orta
+şiddette virajda başlar; lastik izleri (tek paylaşılan halka mesh), sert kaymada duman. Arcade'de dönüş girişinde anlık
+savrulma tepkisi. Gamepad: sol çubuk analog direksiyon (ölü bölge 0.12, yanıt eğrisi ^1.6) ve gaz/fren.
+
 ### Polis dengesi
 Duraklat → **Polis zorluğu**: Kolay (varsayılan) / Normal / Zor.
 - Aktif takipçi sınırı 1–5 yıldızda 2/3/4/5/6 (Kolay'da bir eksik). Polis azami hızı oyuncunun %90/93/95'i (1–2 yıldız),

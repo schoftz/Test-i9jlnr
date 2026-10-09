@@ -90,7 +90,7 @@ namespace MostWanted
             switch (g.menu)
             {
                 case Game.Menu.Pause: DrawPause(g, W, H); break;
-                case Game.Menu.Garage: DrawGarage(g, W, H); break;
+                case Game.Menu.Garage: break;   // GarageStage (Carbon tarzı) çizer
                 case Game.Menu.Jobs: DrawJobs(g, W, H); break;
                 case Game.Menu.Blacklist: DrawBlacklist(g, W, H); break;
                 case Game.Menu.Map: DrawMap(g, W, H); break;
@@ -192,7 +192,14 @@ namespace MostWanted
             // durum yazıları
             float sy = H * 0.62f;
             var cs = Align(toastStyle, TextAnchor.MiddleCenter);
-            if (g.career.driftShow > 50f) { Shadow(new Rect(0, sy, W, 40), "DRIFT  " + Mathf.RoundToInt(g.career.driftShow), cs); sy += 40; }
+            if (g.career.driftShow > 20f)
+            {
+                var dc = g.career;
+                Shadow(new Rect(0, sy, W, 40), "DRIFT  " + Mathf.RoundToInt(dc.driftShow) + "   ×" + Mathf.RoundToInt(dc.driftMult), cs);
+                Rect(new Rect(W / 2 - 120, sy + 40, 240, 6), new Color(0, 0, 0, 0.5f));
+                Rect(new Rect(W / 2 - 120, sy + 40, 240 * dc.driftChain, 6), new Color(0.37f, 0.88f, 0.82f, 0.95f));
+                sy += 52;
+            }
             if (pd != null && pd.drafting) { Shadow(new Rect(0, sy, W, 40), "RÜZGAR TÜNELİ  +Nitro", cs); sy += 40; }
             if (p.TiresBlown) { Shadow(new Rect(0, sy, W, 40), "LASTİKLER PATLAK!", cs); sy += 40; }
             if (pd != null && pd.speedbreakerOn) Shadow(new Rect(0, sy, W, 40), "SPEEDBREAKER", cs);
@@ -530,12 +537,16 @@ namespace MostWanted
             GUI.enabled = g.dressing != null;
             if (GUILayout.Button("Islak Zemin (yağmur sonrası): " + (d.wet ? "Açık" : "Kapalı"), btn)) g.SetWet(!d.wet);
             GUI.enabled = g.usingImportedMap;
-            if (GUILayout.Button("Harita Süsleme: " + (d.dressing ? "Açık" : "Kapalı") + "  (haritayı yeniden yükler)", btn)) { d.dressing = !d.dressing; SaveSystem.Save(); g.SwitchMap(true); }
+            if (GUILayout.Button("Harita Süsleme: " + (d.dressing ? "Açık" : "Kapalı") + "  (haritayı yeniden yükler)", btn)) { d.dressing = !d.dressing; SaveSystem.Save(); g.SetMap(g.mapMode); }
             GUI.enabled = true;
             if (GUILayout.Button("GPU Resident Drawer (deneysel): " + (d.gpuResidentDrawer ? "Açık" : "Kapalı"), btn)) { d.gpuResidentDrawer = !d.gpuResidentDrawer; SaveSystem.Save(); g.ApplyQuality(d.quality); }
             if (GUILayout.Button("FPS Göstergesi: " + (g.showFps ? "Açık" : "Kapalı") + " (F)", btn)) g.showFps = !g.showFps;
-            GUI.enabled = g.HasImportedMap;
-            if (GUILayout.Button("Harita: " + (g.usingImportedMap ? "İthal" : "Test") + (g.HasImportedMap ? "  (değiştir)" : "  (ithal harita yok)"), btn)) g.SwitchMap(!g.usingImportedMap);
+            if (GUILayout.Button("Harita: " + Game.MapNames[g.mapMode] + "  (değiştir)", btn))
+            {
+                int nm = (g.mapMode + 1) % 3;
+                if (nm == 1 && !g.HasImportedMap) nm = 2;
+                g.SetMap(nm);
+            }
             GUI.enabled = true;
             if (GUILayout.Button("Garaja Işınlan", btn))
             {

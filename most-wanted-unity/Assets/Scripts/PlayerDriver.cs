@@ -34,6 +34,19 @@ namespace MostWanted
             };
         }
 
+        float padCheckT; bool hasPad;
+        bool HasPad()
+        {
+            padCheckT -= Time.unscaledDeltaTime;
+            if (padCheckT <= 0f)
+            {
+                padCheckT = 2f; hasPad = false;
+                try { foreach (var n in Input.GetJoystickNames()) if (!string.IsNullOrEmpty(n)) hasPad = true; } catch (System.Exception) { hasPad = false; }
+            }
+            return hasPad;
+        }
+        static float SafeAxis(string a) { try { return Input.GetAxisRaw(a); } catch (System.Exception) { return 0f; } }
+
         void Update()
         {
             var g = Game.I;
@@ -46,6 +59,13 @@ namespace MostWanted
                 if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow)) th -= 1f;
                 if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) st += 1f;
                 if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) st -= 1f;
+            }
+            // gamepad: analog direksiyon (ölü bölge + yanıt eğrisi), sol çubuk dikey = gaz/fren
+            if (!blocked && st == 0f && HasPad())
+            {
+                float ax = SafeAxis("Horizontal"), ay = SafeAxis("Vertical");
+                if (Mathf.Abs(ax) > 0.12f) st = Mathf.Sign(ax) * Mathf.Pow((Mathf.Abs(ax) - 0.12f) / 0.88f, 1.6f);
+                if (th == 0f && Mathf.Abs(ay) > 0.15f) th = Mathf.Sign(ay) * (Mathf.Abs(ay) - 0.15f) / 0.85f;
             }
             // countdown sırasında gaz verilebilir (burnout / kalkış devri)
             if (g != null && g.race.Counting && (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow))) th = 1f;
@@ -102,8 +122,8 @@ namespace MostWanted
                 if (kmh > 180f) fill += 0.015f;
                 if (drafting) fill += 0.08f;
                 car.nitro = Mathf.Min(1f, car.nitro + fill * dt);
-                if (car.driftAmount > 12f && kmh > 50f && g != null) g.career.AddDrift(dt * kmh * 0.05f);
             }
+            if (g != null && !g.race.Active) g.career.DriftTick(car.driftAmount, kmh, dt);
 
             NearMiss(kmh);
             Draft(kmh);

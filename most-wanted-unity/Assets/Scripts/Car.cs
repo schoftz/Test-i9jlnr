@@ -55,6 +55,7 @@ namespace MostWanted
         public bool braking;
 
         public Rigidbody rb;
+        [System.NonSerialized] public CarParts parts;
         public Transform[] wheelAnchor = new Transform[4];          // FL FR RL RR — süspansiyon üst noktası
         public float[] wheelRadii = { 0.34f, 0.34f, 0.34f, 0.34f };
         public WheelCollider[] wheels = new WheelCollider[4];        // yalnızca drift modunda dolu
@@ -74,6 +75,11 @@ namespace MostWanted
         [System.NonSerialized] public System.Action<int, int> onShift;
         [System.NonSerialized] public System.Action<int, int> onShiftAudio; // vites, kalite (0 normal, 1 iyi, 2 mükemmel)
 
+        // ---- his katmanı ----
+        [System.NonSerialized] public float latG, longG, tyreSlip;     // filtrelenmiş ivmeler (g), en büyük lastik kayması (1 = tepe)
+        readonly float[] wSlip = new float[4];
+        Vector3 gPrevVel; bool gHas;
+        float bodyRoll, bodyRollV, bodyPitch, bodyPitchV, prevSteerIn;
         float curSteer, uprightTimer, shiftTimer, limiterT;
         Vector3 lastVel; bool hasLastVel; int burstCount;
         float sinceShift = 1f;
@@ -365,7 +371,41 @@ namespace MostWanted
             }
             else uprightTimer = 0f;
 
+            // his: ivmeler (kamera/gövde yatışı), lastik izleri
+            if (gHas)
+            {
+                Vector3 acc = (v - gPrevVel) / dt;
+                float k = 1f - Mathf.Exp(-dt * 10f);
+                latG = Mathf.Lerp(latG, Mathf.Clamp(Vector3.Dot(acc, transform.right) / CarMath.Gravity, -3f, 3f), k);
+                longG = Mathf.Lerp(longG, Mathf.Clamp(Vector3.Dot(acc, transform.forward) / CarMath.Gravity, -3f, 3f), k);
+            }
+            gPrevVel = v; gHas = true;
+            Skids(kmh);
             UpdateEffects(kmh, Mathf.Abs(slipAngle));
+        }
+
+        void Skids(float kmh)
+        {
+            tyreSlip = 0f;
+            for (int i = 0; i < 4; i++) tyreSlip = Mathf.Max(tyreSlip, wSlip[i]);
+            if (!isPlayer && !(GetComponent<RacerDriver>() != null)) return;   // iz: oyuncu + rakipler
+            var sm = SkidMarks.Get();
+            int id = GetHashCode() * 4;
+            for (int i = 0; i < 4; i++)
+            {
+                float inten = kmh > 8f ? Mathf.Clamp01((wSlip[i] - 1.0f) / 0.8f) : 0f;
+                Vector3 p, n;
+                if (inten > 0f && GroundPoint(i, out p, out n)) sm.Add(id + i, p, n, transform.right, 0.24f, inten);
+                else sm.Add(id + i, Vector3.zero, Vector3.up, Vector3.right, 0f, 0f);
+            }
+        }
+
+        bool GroundPoint(int i, out Vector3 p, out Vector3 n)
+        {
+            p = Vector3.zero; n = Vector3.up;
+            if (driftMode) { WheelHit h; if (wheels[i] != null && wheels[i].GetGroundHit(out h)) { p = h.point; n = h.normal; return true; } return false; }
+            if (rvp[i] != null && rvp[i].grounded) { p = rvp[i].hit.point; n = rvp[i].hit.normal; return true; }
+            return false;
         }
 
         /// <summary>Normal mod: Randomation Vehicle Physics tekerlekleri.</summary>
@@ -413,6 +453,10 @@ namespace MostWanted
                     sideMul *= Mathf.Lerp(1f, 0.75f, handbrakeBlend);
                 }
                 w.ApplyFriction(rb, transform, mu, sideMul, drv, bAcc, tcs, spin, forceH, dt);
+                // lastik kayması (1 = yanal tepe): ses, iz, duman için
+                float lat = w.grounded ? Mathf.Abs(w.sideSlip) / 0.1932f : 0f;
+                float lng = w.grounded ? Mathf.Max(0f, w.fwdSlip / 0.2013f - 1f) * 1.5f : 0f;
+                wSlip[i] = Mathf.Max(lat, lng + (spin >= 0f && kmh > 15f ? 1.4f : 0f));
             }
 
             // RVP VehicleAssist: savrulma yardımı (sadece kayarken etkin) — gazdan bağımsız
@@ -420,7 +464,14 @@ namespace MostWanted
             {
                 float muEff = arcade ? mu * RvpTire.ArcadeGrip(kmh) * 1.3f : mu;
                 float yawAcc = RvpTire.SpinAssist(steer, fwd, lv.x, rb.angularVelocity.y, 2.2f, 1.6f * stabilityAssist / 0.45f, curSteer, wheelBase, muEff);
-                if (arcade && !handbrake) yawAcc += RvpTire.ArcadeTurnIn(steer, fwd, rb.angularVelocity.y, curSteer, wheelBase, muEff);
+                if (arcade && !handbrake)
+                {
+                    yawAcc += RvpTire.ArcadeTurnIn(steer, fwd, rb.angularVelocity.y, curSteer, wheelBase, muEff, 8f);
+                    // dönüşe giriş tekmesi: girdi başladığı anda küçük anlık savrulma (gecikmesiz tepki)
+                    if (Mathf.Abs(steer) > 0.3f && Mathf.Abs(prevSteerIn) < 0.15f && kmh > 20f)
+                        rb.AddTorque(transform.up * Mathf.Sign(steer) * Mathf.Sign(fwd) * 0.12f * Mathf.Min(1f, kmh / 60f), ForceMode.VelocityChange);
+                }
+                prevSteerIn = steer;
                 rb.AddTorque(transform.up * yawAcc, ForceMode.Acceleration);
             }
         }
@@ -450,6 +501,11 @@ namespace MostWanted
                 wheels[i].sidewaysFriction = ArcadeDrift.Sideways((i < 2 ? 2f : rearSide) * g);
             }
             AntiRoll(0, 1); AntiRoll(2, 3);
+            for (int i = 0; i < 4; i++)
+            {
+                WheelHit h;
+                wSlip[i] = wheels[i].GetGroundHit(out h) ? Mathf.Max(Mathf.Abs(h.sidewaysSlip) / 0.2f, Mathf.Abs(h.forwardSlip) / 0.4f - 0.5f) : 0f;
+            }
             if (GroundedCount() >= 2)
             {
                 bool drift = (handbrake && kmh > 36f) || (Mathf.Abs(slipAngle) > 10f && throttle > 0.3f && kmh > 36f);
@@ -539,6 +595,22 @@ namespace MostWanted
 
         void LateUpdate()
         {
+            // görsel gövde yatışı/yunuslama (fizik gövdesi değil): yanal/boyuna ivmeye yay-sönümleyici
+            if (parts != null && parts.vis != null && (isPlayer || GetComponent<RacerDriver>() != null))
+            {
+                float dtv = Mathf.Clamp(Time.deltaTime, 0f, 0.05f);
+                if (dtv > 0f)
+                {
+                    float tr = Mathf.Clamp(latG * 2.4f, -4f, 4f), tp = Mathf.Clamp(-longG * 1.6f, -3f, 3f);
+                    const float w0 = 11f, z = 0.55f;
+                    bodyRollV += (w0 * w0 * (tr - bodyRoll) - 2f * z * w0 * bodyRollV) * dtv; bodyRoll += bodyRollV * dtv;
+                    bodyPitchV += (w0 * w0 * (tp - bodyPitch) - 2f * z * w0 * bodyPitchV) * dtv; bodyPitch += bodyPitchV * dtv;
+                }
+                Quaternion q = Quaternion.Euler(bodyPitch, 0f, bodyRoll);
+                Vector3 piv = new Vector3(0f, wheelRadius, (parts.wPos[0].z + parts.wPos[2].z) * 0.5f);
+                parts.vis.localRotation = q;
+                parts.vis.localPosition = piv - q * piv;
+            }
             for (int i = 0; i < 4; i++)
             {
                 if (rvp[i] != null) { rvp[i].UpdateVisual(transform, Time.deltaTime); continue; }

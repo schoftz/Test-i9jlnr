@@ -66,7 +66,7 @@ class RvpSim {
     float lv = s.w;
     float muEff = arcade ? mu * RvpTire.ArcadeGrip(kmh) * 1.3f : mu;
     float yawAcc = mz / Iz + RvpTire.SpinAssist(steerIn, s.u, lv, s.r, 2.2f, 1.6f * assist, s.steer, L, muEff);
-    if (arcade && !hb) yawAcc += RvpTire.ArcadeTurnIn(steerIn, s.u, s.r, s.steer, L, muEff);
+    if (arcade && !hb) yawAcc += RvpTire.ArcadeTurnIn(steerIn, s.u, s.r, s.steer, L, muEff, 8f);
     lastAx = fx; lastAy = fy;
     s.u += (fx + s.r * s.w) * dt;
     s.w += (fy - s.r * s.u) * dt;

@@ -420,6 +420,8 @@ namespace MostWanted
             float slipDeg = Mathf.Abs(car.slipAngle);
             float slip = Mathf.Clamp01((slipDeg - 8f) / 25f) * Mathf.Clamp01(kmh / 30f);
             if (car.handbrake && kmh > 20f) slip = Mathf.Max(slip, 0.7f);
+            // orta şiddette virajda da hafif ciyaklama: lastik yanal kayması tepe değerin %60'ından itibaren
+            slip = Mathf.Max(slip, Mathf.Clamp01((car.tyreSlip - 0.6f) / 0.9f) * 0.75f * Mathf.Clamp01(kmh / 35f));
             if (car.gear == 1 && car.throttle > 0.8f && kmh < 30f && car.peakTorque > 300f && !car.locked) slip = Mathf.Max(slip, 0.6f);
             pRpm = Mathf.Max(600f, rpm);
             pThrottle = th;

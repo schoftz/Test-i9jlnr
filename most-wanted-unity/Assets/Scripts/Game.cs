@@ -48,6 +48,7 @@ namespace MostWanted
         public float Night { get; private set; }
         public string mapCredit = "";
         public bool usingImportedMap;
+        public int mapMode;   // 0 Kendi Şehrimiz (varsayılan), 1 İthal, 2 Test
         public float bigMapZoom = 600f;
         public Vector3 bigMapPan;
 
@@ -123,7 +124,8 @@ namespace MostWanted
             usingImportedMap = false;
             mapCredit = "";
             var reg = Resources.Load<MapRegistry>("MapRegistry");
-            bool wantImported = PlayerPrefs.GetInt("MW_MAP", 1) == 1;
+            mapMode = Mathf.Clamp(PlayerPrefs.GetInt("MW_MAP2", 0), 0, 2);
+            bool wantImported = mapMode == 1;
             if (wantImported && reg != null && reg.maps.Count > 0 && reg.maps[0].prefab != null)
             {
                 var baked = Resources.Load<TextAsset>("MapData/" + reg.maps[0].name.Replace("_opt", "") + "_roadgraph");
@@ -146,6 +148,11 @@ namespace MostWanted
                 }
                 catch (System.Exception e) { Debug.LogWarning("Harita yüklenemedi: " + e.Message); }
             }
+            if (world == null && mapMode == 0)
+            {
+                try { var own = new OwnCity(); own.Build(); world = own; }
+                catch (System.Exception e) { Debug.LogWarning("Kendi şehrimiz kurulamadı: " + e); var r0 = GameObject.Find("KendiSehrimiz"); if (r0 != null) Destroy(r0); }
+            }
             if (world == null)
             {
                 var city = new City();
@@ -155,7 +162,7 @@ namespace MostWanted
             }
 
             dressing = null;
-            if (!(world is City) && SaveSystem.Data.dressing)
+            if (!(world is City) && !(world is OwnCity) && SaveSystem.Data.dressing)
             {
                 try { dressing = MapDressing.Build(world, SaveSystem.Data.quality); }
                 catch (System.Exception e) { Debug.LogWarning("Harita süsleme başarısız: " + e); }
@@ -203,9 +210,14 @@ namespace MostWanted
             Init();
         }
 
-        public void SwitchMap(bool imported)
+        public void SwitchMap(bool imported) { SetMap(imported ? 1 : 2); }
+
+        public static readonly string[] MapNames = { "Kendi Şehrimiz", "İthal", "Test" };
+
+        /// <summary>0 Kendi Şehrimiz, 1 İthal harita, 2 Test şehri — dünyayı yeniden kurar.</summary>
+        public void SetMap(int mode)
         {
-            PlayerPrefs.SetInt("MW_MAP", imported ? 1 : 0);
+            PlayerPrefs.SetInt("MW_MAP2", Mathf.Clamp(mode, 0, 2));
             PlayerPrefs.Save();
             StartCoroutine(Rebuild());
         }
@@ -351,6 +363,12 @@ namespace MostWanted
             else if (def.prefab == null) col = new PaintDef("Fabrika", def.defaultColor, 0.5f, 0.8f);
             pos = GroundSnap(pos);
             player = CarFactory.Build(def, col, pos, rot, CarRole.Player, save != null ? save.tune : null, "Oyuncu");
+            // Drift Araçları: drift ayarı açıksa Saarg (Arcade Car Physics) kontrolcüsüne geç — tek kontrolcü
+            if (CustomCatalog.IsDriftCar(def) && save != null && save.custom != null && save.custom.DriftSetup)
+            {
+                player.SetPhysicsMode(true);
+                Toast("Drift ayarı aktif — el freni + gaz ile savur!");
+            }
             fallTimer = 0f;
             player.nitro = nitro;
             playerDriver = player.gameObject.AddComponent<PlayerDriver>();
@@ -359,6 +377,7 @@ namespace MostWanted
             {
                 police.OnPlayerHit(c);
                 if (c.rigidbody != null) playerDriver.MarkTouched(c.rigidbody);
+                if (c.relativeVelocity.magnitude > 4f) career.DriftCrash();
                 if (c.relativeVelocity.magnitude > 8f) rig.Shake(Mathf.Clamp01(c.relativeVelocity.magnitude / 30f));
                 if (playerDriver.engineAudio != null) playerDriver.engineAudio.Impact(c.relativeVelocity.magnitude);
             };
@@ -388,6 +407,7 @@ namespace MostWanted
         {
             menu = m;
             if (m == Menu.Garage && hud != null) hud.garageSel = Mathf.Max(0, Catalog.Garage.IndexOf(Catalog.Get(SaveSystem.Data.selected)));
+            if (m == Menu.Garage) GarageStage.Get().Enter();
             if (m == Menu.Map) { bigMapCam.enabled = true; bigMapPan = Vector3.zero; }
             ApplyTimeScale();
         }
@@ -396,6 +416,7 @@ namespace MostWanted
         {
             if (menu == Menu.Garage)
             {
+                if (GarageStage.I != null) GarageStage.I.Exit();
                 SaveSystem.Save();
                 SpawnPlayer(world.garagePos + Vector3.up * 0.5f, world.garageRot);
                 rig.Snap();
@@ -467,6 +488,7 @@ namespace MostWanted
 
         void HandleKeys()
         {
+            if (menu == Menu.Garage) return;   // garaj kendi tuşlarını işler (GarageStage)
             if (Input.GetKeyDown(KeyCode.Escape))
             {
                 if (menu == Menu.None) OpenMenu(Menu.Pause);
