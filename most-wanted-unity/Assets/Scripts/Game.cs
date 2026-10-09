@@ -326,7 +326,9 @@ namespace MostWanted
             var def = Catalog.Get(d.selected) ?? Catalog.Garage[0];
             var save = SaveSystem.Get(def.id);
             Color col = save != null && save.color >= 0 ? Catalog.Paints[save.color] : def.defaultColor;
+            pos = GroundSnap(pos);
             player = CarFactory.Build(def, col, pos, rot, CarRole.Player, save != null ? save.tune : null, "Oyuncu");
+            fallTimer = 0f;
             player.nitro = nitro;
             playerDriver = player.gameObject.AddComponent<PlayerDriver>();
             playerDriver.speedbreaker = sb;
@@ -379,6 +381,37 @@ namespace MostWanted
             ApplyTimeScale();
         }
 
+        float fallTimer;
+
+        /// <summary>Doğma noktasını alttaki zemine oturtur (araç gövdesi zemine gömülmesin).</summary>
+        public static Vector3 GroundSnap(Vector3 p)
+        {
+            RaycastHit h;
+            int mask = ~((1 << OptimizationManager.TrafficLayer) | (1 << U.IconLayer));
+            if (Physics.Raycast(p + Vector3.up * 40f, Vector3.down, out h, 200f, mask, QueryTriggerInteraction.Ignore))
+                return h.point + Vector3.up * 1.2f;
+            return p + Vector3.up * 1.2f;
+        }
+
+        /// <summary>Oyuncu haritanın altına düşerse en yakın yola geri koyar.</summary>
+        void FallGuard(float dt)
+        {
+            Vector3 p = player.transform.position;
+            float vy = U.Vel(player.rb).y;
+            bool groundBelow = Physics.Raycast(p + Vector3.up * 2f, Vector3.down, 300f, ~((1 << OptimizationManager.TrafficLayer) | (1 << U.IconLayer)), QueryTriggerInteraction.Ignore);
+            if (vy < -15f && !groundBelow) fallTimer += dt; else fallTimer = 0f;
+            bool tooLow = world.graph.nodes.Count > 0 && p.y < world.graph.nodes[world.graph.Nearest(p)].y - 40f;
+            if (fallTimer > 0.8f || tooLow)
+            {
+                fallTimer = 0f;
+                Vector3 n = world.graph.nodes.Count > 0 ? world.graph.nodes[world.graph.Nearest(p)] : world.garagePos;
+                player.Teleport(GroundSnap(n), player.transform.rotation);
+                rig.Snap();
+                Toast("Yola geri alındın");
+                Debug.LogWarning("[MW] Oyuncu harita altına düştü, kurtarıldı. Konum: " + p + " → " + n);
+            }
+        }
+
         void Update()
         {
             float udt = Time.unscaledDeltaTime;
@@ -389,6 +422,7 @@ namespace MostWanted
                 if (toastTimes[i] <= 0f) { toastTimes.RemoveAt(i); toasts.RemoveAt(i); }
             }
             if (player == null || world == null) return;
+            FallGuard(udt);
             HandleKeys();
             UpdateDayNight();
             UpdatePostFx();
