@@ -175,6 +175,7 @@ namespace MostWanted
             var cop = c.rigidbody.GetComponent<PoliceDriver>();
             if (cop == null) return;
             float rel = c.relativeVelocity.magnitude;
+            if (c.contactCount > 0 && Mathf.Abs(c.GetContact(0).normal.y) > 0.7f) return; // üstten/alttan temas sayılmaz
             if (rel > 4f) cop.car.Damage(rel * (cop.role == "suv" ? 1.6f : 2.6f));
             Game.I.rig.Shake(Mathf.Clamp01(rel / 25f));
             if (hitCool > 0f || rel < 4f) return;
@@ -264,7 +265,7 @@ namespace MostWanted
             int b = adj[Random.Range(0, adj.Count)];
             Vector3 lp = graph.LanePoint(a, b);
             Vector3 pos = Vector3.Lerp(graph.nodes[a] + (lp - graph.nodes[b]), lp, 0.35f) + Vector3.up * 0.4f;
-            if (Physics.CheckSphere(pos + Vector3.up * 0.8f, 2.5f, ~(1 << U.IconLayer), QueryTriggerInteraction.Ignore)) return;
+            if (U.CarNearby(pos, 5f, null) || U.FlatDist(pos, Game.I.player.transform.position) < 60f) return;
             string role = "patrol";
             int s = Stars;
             float r = Random.value;
@@ -275,8 +276,8 @@ namespace MostWanted
             // polis performansı: aranma seviyesiyle artar
             car.peakTorque *= 1f + 0.05f * s;
             car.topSpeed = Mathf.Max(car.topSpeed, 230f + s * 12f);
-            car.dragK = CarMath.DragCoef(car.peakTorque, car.topSpeed, car.redline, car.wheelRadius);
-            car.finalDrive = CarMath.FinalDrive(car.topSpeed, car.redline, car.wheelRadius);
+            car.dragK = CarMath.DragCoef(car.peakTorque, car.topSpeed, car.redline, car.wheelRadius, car.ratios);
+            car.finalDrive = CarMath.FinalDrive(car.topSpeed, car.redline, car.wheelRadius, car.ratios);
             var d = car.gameObject.AddComponent<PoliceDriver>();
             d.Init(a, b);
             d.role = role;

@@ -405,7 +405,7 @@ namespace MostWanted
             ApplyTimeScale();
         }
 
-        float fallTimer;
+        float fallTimer, flyTimer;
 
         /// <summary>Doğma noktasını alttaki zemine oturtur (araç gövdesi zemine gömülmesin).</summary>
         public static Vector3 GroundSnap(Vector3 p)
@@ -424,7 +424,10 @@ namespace MostWanted
             float vy = U.Vel(player.rb).y;
             bool groundBelow = Physics.Raycast(p + Vector3.up * 2f, Vector3.down, 300f, ~((1 << OptimizationManager.TrafficLayer) | (1 << U.IconLayer)), QueryTriggerInteraction.Ignore);
             if (vy < -15f && !groundBelow) fallTimer += dt; else fallTimer = 0f;
-            bool tooLow = world.graph.nodes.Count > 0 && p.y < world.graph.nodes[world.graph.Nearest(p)].y - 40f;
+            float nodeY = world.graph.nodes.Count > 0 ? world.graph.nodes[world.graph.Nearest(p)].y : p.y;
+            bool tooLow = world.graph.nodes.Count > 0 && p.y < nodeY - 40f;
+            if (p.y > nodeY + 60f) flyTimer += dt; else flyTimer = 0f;
+            if (flyTimer > 2f) { flyTimer = 0f; tooLow = true; Debug.LogWarning("[MW] Oyuncu havada kaldı, yola indirildi."); }
             if (fallTimer > 0.8f || tooLow)
             {
                 fallTimer = 0f;

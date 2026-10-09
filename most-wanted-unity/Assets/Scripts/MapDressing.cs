@@ -26,8 +26,17 @@ namespace MostWanted
             readonly List<KeyValuePair<Vector3, Matrix4x4[]>> baked = new List<KeyValuePair<Vector3, Matrix4x4[]>>();
             public int Count;
             public bool hidden;
+            // zemine oturtma: yol ağı yüksekliği yerine gerçek yüzeye ışın
+            public MapDressing snapOwner; public bool align; public float lift;
             public void Add(Vector3 p, Quaternion r, Vector3 s)
             {
+                if (snapOwner != null)
+                {
+                    RaycastHit h;
+                    if (!snapOwner.GroundHit(p, out h)) return;
+                    p.y = h.point.y + lift;
+                    if (align) r = Quaternion.FromToRotation(Vector3.up, h.normal) * r;
+                }
                 long k = ((long)Mathf.FloorToInt(p.x / 250f) << 32) ^ (uint)Mathf.FloorToInt(p.z / 250f);
                 List<Matrix4x4> l;
                 if (!cells.TryGetValue(k, out l)) cells[k] = l = new List<Matrix4x4>();
@@ -156,6 +165,7 @@ namespace MostWanted
 
         void Init()
         {
+            Physics.SyncTransforms(); // harita çarpıştırıcıları ışınlar için hazır olsun
             sphere = PrimMesh(PrimitiveType.Sphere); cube = PrimMesh(PrimitiveType.Cube);
             cylinder = PrimMesh(PrimitiveType.Cylinder); quad = PrimMesh(PrimitiveType.Quad);
 
@@ -186,6 +196,27 @@ namespace MostWanted
             foreach (var s in sets) s.Bake();
             Debug.Log("[MW] Harita süsleme hazır: " + sets.Count + " instanced set, otoyol " + hw.Count + " nokta, trafik ışığı " + lightNodes.Count);
         }
+
+        static int GroundMask { get { return ~((1 << OptimizationManager.TrafficLayer) | (1 << U.IconLayer) | (1 << OptimizationManager.DetailLayer)); } }
+
+        /// <summary>p'nin altındaki gerçek zemin (araç/ikon/detay katmanları ve tetikleyiciler hariç), ±5 m içinde.</summary>
+        public bool GroundHit(Vector3 p, out RaycastHit h)
+        {
+            if (Physics.Raycast(p + Vector3.up * 4f, Vector3.down, out h, 12f, GroundMask, QueryTriggerInteraction.Ignore) && h.rigidbody == null)
+                return Mathf.Abs(h.point.y - p.y) < 5f;
+            return false;
+        }
+
+        /// <summary>Tekil objeleri zemine oturt; zemin yoksa false.</summary>
+        bool SnapPos(ref Vector3 p)
+        {
+            RaycastHit h;
+            if (!GroundHit(p, out h)) return false;
+            p.y = h.point.y;
+            return true;
+        }
+
+        void SnapSet(ISet set, bool align, float lift) { set.snapOwner = this; set.align = align; set.lift = lift; }
 
         static long HashKey(Vector3 p) { return ((long)Mathf.FloorToInt(p.x / 100f) << 32) ^ (uint)Mathf.FloorToInt(p.z / 100f); }
 
@@ -562,13 +593,13 @@ namespace MostWanted
             g.Link(prev, eastNode); hwNodes.Add(eastNode);
 
             // otoyol yarışları
-            var sprint = new RaceDef { name = "Otoyol Sprinti", type = RaceType.Sprint, prize = 7000, route = w.RouteFromNodes(hwNodes, false) };
+            var sprint = new RaceDef { name = "Otoyol Sprinti", type = RaceType.Sprint, prize = 21000, route = w.RouteFromNodes(hwNodes, false) };
             w.races.Add(sprint);
             var loop = new List<int>(hwNodes);
             var back = g.Path(eastNode, southNode);
             for (int i = 1; i < back.Count - 1; i++) loop.Add(back[i]);
-            w.races.Add(new RaceDef { name = "Otoyol Turu", type = RaceType.Circuit, laps = 1, prize = 12000, route = w.RouteFromNodes(loop, true) });
-            var trap = new RaceDef { name = "Köprü Radarı", type = RaceType.Speedtrap, prize = 8000, route = w.RouteFromNodes(hwNodes, false) };
+            w.races.Add(new RaceDef { name = "Otoyol Turu", type = RaceType.Circuit, laps = 1, prize = 36000, route = w.RouteFromNodes(loop, true) });
+            var trap = new RaceDef { name = "Köprü Radarı", type = RaceType.Speedtrap, prize = 24000, route = w.RouteFromNodes(hwNodes, false) };
             trap.special.Add(hwNodes.Count / 4); trap.special.Add(hwNodes.Count / 2); trap.special.Add(3 * hwNodes.Count / 4);
             w.races.Add(trap);
         }
@@ -682,9 +713,12 @@ namespace MostWanted
             var stripe = Set(Combine(P(cube, Vector3.zero, new Vector3(0.6f, 0.02f, 3.2f))), new[] { U.Mat(new Color(0.85f, 0.85f, 0.82f), 0.3f) }, 200f, false);
             var puddle = Set(Combine(P(cylinder, Vector3.zero, new Vector3(1f, 0.005f, 1f))), new[] { U.Mat(new Color(0.05f, 0.06f, 0.08f), 0.97f, 0.1f) }, 150f, false);
             puddles = puddle;
+            SnapSet(lamp, false, 0f); SnapSet(head, false, 0f); SnapSet(bench, false, 0f); SnapSet(bin, false, 0f); SnapSet(hydrant, false, 0f);
+            SnapSet(tree, false, -0.1f); SnapSet(manhole, true, 0.02f); SnapSet(stripe, true, 0.025f); SnapSet(puddle, true, 0.015f);
             puddle.hidden = true;
             var barrierMat = U.Mat(new Color(1f, 0.45f, 0.05f), 0.4f);
             var barrier = Set(Combine(P(cube, new Vector3(0, 0.5f, 0), new Vector3(1.6f, 1f, 0.4f))), new[] { barrierMat }, 250f);
+            SnapSet(barrier, false, 0f);
 
             float lampAcc = 0f, dressAcc = 0f;
             int quota = new[] { 1, 2, 3 }[quality];
@@ -709,8 +743,11 @@ namespace MostWanted
                         float side = (a + b) % 2 == 0 ? 1f : -1f;
                         Vector3 lp = Vector3.Lerp(pa, pb, 0.5f) + r * side * (half + 1.3f);
                         Quaternion lq = Quaternion.LookRotation(r * side);
-                        lamp.Add(lp, lq, Vector3.one); head.Add(lp, lq, Vector3.one);
-                        lampPositions.Add(lp + Vector3.up * 7.5f - r * side * 1.5f);
+                        if (SnapPos(ref lp))
+                        {
+                            lamp.Add(lp, lq, Vector3.one); head.Add(lp, lq, Vector3.one);
+                            lampPositions.Add(lp + Vector3.up * 7.5f - r * side * 1.5f);
+                        }
                     }
                     if (half >= 7.5f && R01() < 0.8f)
                         for (int s = -1; s <= 1; s += 2) tree.Add(Vector3.Lerp(pa, pb, R01()) + r * s * (half + 2.5f), Quaternion.Euler(0, R01() * 360, 0), Vector3.one * Mathf.Lerp(0.8f, 1.2f, R01()));
@@ -725,7 +762,10 @@ namespace MostWanted
                         if (R01() < 0.5f) manhole.Add(Vector3.Lerp(pa, pb, R01()) + r * (half * 0.25f) + Vector3.up * 0.03f, Quaternion.identity, Vector3.one);
                         if (R01() < 0.3f) puddle.Add(Vector3.Lerp(pa, pb, R01()) + r * (half * (R01() - 0.5f)) + Vector3.up * 0.02f, Quaternion.Euler(0, R01() * 360, 0), new Vector3(Mathf.Lerp(1.5f, 4f, R01()), 1f, Mathf.Lerp(1f, 3f, R01())));
                         // park yeri
-                        parkSpots.Add(new KeyValuePair<Vector3, Quaternion>(Vector3.Lerp(pa, pb, 0.5f) + r * (half - 1.1f) + Vector3.up * 0.05f, q));
+                        // park yeri: kaldırımdan ~0.4 m, şeride taşmaz; dar yol ve kavşak yakını hariç
+                        bool nearJunction = (g.adj[a].Count >= 3 && len < 30f) || (g.adj[b].Count >= 3 && len < 30f);
+                        if (half >= 5.5f && !nearJunction)
+                            parkSpots.Add(new KeyValuePair<Vector3, Quaternion>(Vector3.Lerp(pa, pb, 0.5f) + r * (half - 1.35f), q));
                     }
                 }
                 // kavşaklar
@@ -750,7 +790,8 @@ namespace MostWanted
                 if (g.adj[n].Count == 0 || g.lane[n] > 6f) continue;
                 Vector3 df = U.Flat(g.nodes[g.adj[n][0]] - g.nodes[n]).normalized; Vector3 r = new Vector3(df.z, 0, -df.x);
                 for (int j = 0; j < 4; j++) barrier.Add(g.nodes[n] + df * (10f + j * 1.8f) + r * g.lane[n] * 1.3f, Quaternion.LookRotation(df), Vector3.one);
-                U.Text3D("YOL ÇALIŞMASI", root, g.nodes[n] + df * 9f + r * g.lane[n] * 1.3f + Vector3.up * 1.6f, Quaternion.LookRotation(-df), 0.6f, Color.black);
+                Vector3 tp = g.nodes[n] + df * 9f + r * g.lane[n] * 1.3f;
+                if (SnapPos(ref tp)) U.Text3D("YOL ÇALIŞMASI", root, tp + Vector3.up * 1.6f, Quaternion.LookRotation(-df), 0.6f, Color.black);
             }
 
             // reklam panoları ve duraklar
@@ -763,6 +804,7 @@ namespace MostWanted
                 if (g.adj[n].Count != 2 || g.lane[n] < 3f || g.lane[n] > 6f) continue;
                 Vector3 df = U.Flat(g.nodes[g.adj[n][0]] - g.nodes[n]).normalized; Vector3 r = new Vector3(df.z, 0, -df.x);
                 Vector3 p = g.nodes[n] + r * (g.lane[n] * 2f + 5f);
+                if (!SnapPos(ref p)) continue;
                 var bgo = new GameObject("ReklamPanosu"); bgo.transform.SetParent(root, false);
                 bgo.transform.SetPositionAndRotation(p, Quaternion.LookRotation(-df));
                 U.Prim(PrimitiveType.Cube, "Direk", bgo.transform, new Vector3(0, 4f, 0.3f), new Vector3(0.5f, 8f, 0.5f), steel, true);
@@ -780,6 +822,7 @@ namespace MostWanted
                 if (g.adj[n].Count != 2 || g.lane[n] < 3f || g.lane[n] > 6f) continue;
                 Vector3 df = U.Flat(g.nodes[g.adj[n][0]] - g.nodes[n]).normalized; Vector3 r = new Vector3(df.z, 0, -df.x);
                 Vector3 p = g.nodes[n] + r * (g.lane[n] * 2f + 2.2f);
+                if (!SnapPos(ref p)) continue;
                 var s = new GameObject("Durak"); s.transform.SetParent(root, false);
                 s.transform.SetPositionAndRotation(p, Quaternion.LookRotation(df));
                 U.Prim(PrimitiveType.Cube, "DurakCati", s.transform, new Vector3(0, 2.6f, 0), new Vector3(1.6f, 0.12f, 4f), steel, true);
@@ -797,6 +840,7 @@ namespace MostWanted
                 if (g.adj[n].Count != 3 || g.lane[n] > 6f) continue;
                 Vector3 df = U.Flat(g.nodes[g.adj[n][0]] - g.nodes[n]).normalized; Vector3 r = new Vector3(df.z, 0, -df.x);
                 Vector3 p = g.nodes[n] + df * 16f + r * (g.lane[n] * 2f + 6f);
+                if (!SnapPos(ref p)) continue;
                 if (Physics.CheckSphere(p + Vector3.up * 6f, 4f)) continue;
                 PursuitBreaker.Create(p, pbs % 2, root);
                 pbs++;
@@ -810,6 +854,7 @@ namespace MostWanted
                 int b = g.adj[a][rnd.Next(3)];
                 Vector3 df = U.Flat(g.nodes[b] - g.nodes[a]).normalized; Vector3 r = new Vector3(df.z, 0, -df.x);
                 Vector3 p = g.nodes[a] + df * (g.lane[a] * 2f + 4f) + r * (g.lane[a] * 2f + 1f);
+                if (!SnapPos(ref p)) continue;
                 var s = new GameObject("DurTabelasi"); s.transform.SetParent(root, false);
                 s.transform.SetPositionAndRotation(p, Quaternion.LookRotation(df));
                 U.Prim(PrimitiveType.Cylinder, "Direk", s.transform, new Vector3(0, 1.2f, 0), new Vector3(0.08f, 1.2f, 0.08f), steel);
@@ -916,7 +961,9 @@ namespace MostWanted
                 if (g.adj[n].Count == 0) continue;
                 Vector3 df = U.Flat(g.nodes[g.adj[n][0]] - g.nodes[n]).normalized; Vector3 r = new Vector3(df.z, 0, -df.x);
                 var s = new GameObject("SemtTabelasi"); s.transform.SetParent(root, false);
-                s.transform.SetPositionAndRotation(g.nodes[n] + r * (g.lane[n] * 2f + 2f), Quaternion.LookRotation(-df));
+                Vector3 sp = g.nodes[n] + r * (g.lane[n] * 2f + 2f);
+                SnapPos(ref sp);
+                s.transform.SetPositionAndRotation(sp, Quaternion.LookRotation(-df));
                 U.Prim(PrimitiveType.Cube, "Direk", s.transform, new Vector3(0, 1.5f, 0), new Vector3(0.15f, 3f, 0.15f), U.Mat(Color.gray), true);
                 U.Prim(PrimitiveType.Cube, "Levha", s.transform, new Vector3(0, 3.3f, 0), new Vector3(4f, 1f, 0.1f), U.Mat(new Color(0.05f, 0.2f, 0.55f), 0.4f));
                 U.Text3D(d.Key, s.transform, new Vector3(0, 3.3f, -0.07f), Quaternion.identity, 0.55f, Color.white);
@@ -1079,8 +1126,9 @@ namespace MostWanted
             var order = new List<KeyValuePair<float, int>>();
             for (int i = 0; i < parkSpots.Count; i++)
             {
+                if (badSpots.Contains(i)) continue;
                 float d = U.FlatDist(parkSpots[i].Key, pp);
-                if (d < 260f && d > 12f) order.Add(new KeyValuePair<float, int>(d, i));
+                if (d < 260f && d > 40f) order.Add(new KeyValuePair<float, int>(d, i));
             }
             order.Sort((a, b) => a.Key.CompareTo(b.Key));
             var target = new HashSet<int>();
@@ -1106,13 +1154,41 @@ namespace MostWanted
                 }
                 parkAssigned[slot] = spot;
                 var t = parkPool[slot].transform;
-                Vector3 p = parkSpots[spot].Key;
-                RaycastHit h;
-                if (Physics.Raycast(p + Vector3.up * 5f, Vector3.down, out h, 12f) && h.rigidbody == null) p.y = h.point.y;
-                t.SetPositionAndRotation(p, parkSpots[spot].Value);
+                Vector3 p; Quaternion q;
+                if (!FitParked(parkSpots[spot].Key, parkSpots[spot].Value, out p, out q)) { parkAssigned[slot] = -1; badSpots.Add(spot); continue; }
+                t.SetPositionAndRotation(p, q);
                 if (!parkPool[slot].activeSelf) parkPool[slot].SetActive(true);
             }
             for (int i = 0; i < parkPool.Count; i++) if (parkAssigned[i] < 0 && parkPool[i].activeSelf) parkPool[i].SetActive(false);
+        }
+
+        readonly HashSet<int> badSpots = new HashSet<int>();
+
+        /// <summary>Park aracını 4 köşeden zemine oturt, eğime hizala, yol kenarına paralel tut; sığmıyorsa false.</summary>
+        bool FitParked(Vector3 c, Quaternion q, out Vector3 pos, out Quaternion rot)
+        {
+            pos = c; rot = q;
+            Vector3 f = q * Vector3.forward, r = q * Vector3.right;
+            var pts = new Vector3[4];
+            float minY = float.MaxValue, maxY = float.MinValue;
+            for (int i = 0; i < 4; i++)
+            {
+                Vector3 p = c + r * (i % 2 == 0 ? -0.85f : 0.85f) + f * (i < 2 ? 2.0f : -2.0f);
+                RaycastHit h;
+                if (!GroundHit(p, out h)) return false;
+                pts[i] = h.point;
+                minY = Mathf.Min(minY, h.point.y); maxY = Mathf.Max(maxY, h.point.y);
+            }
+            if (maxY - minY > 0.45f) return false; // kaldırıma bindi / çok eğimli
+            Vector3 n = Vector3.Cross(pts[3] - pts[0], pts[2] - pts[1]).normalized;
+            if (n.y < 0f) n = -n;
+            if (n.y < 0.9f) return false;
+            pos = (pts[0] + pts[1] + pts[2] + pts[3]) * 0.25f + Vector3.up * 0.02f;
+            rot = Quaternion.FromToRotation(Vector3.up, n) * q;
+            // başka bir şeyle (direk, durak, bina) çakışıyor mu?
+            if (Physics.CheckBox(pos + Vector3.up * 0.9f, new Vector3(0.85f, 0.5f, 2.0f), rot, GroundMask, QueryTriggerInteraction.Ignore)) return false;
+            if (U.CarNearby(pos, 4f, null)) return false;
+            return true;
         }
 
         readonly List<Matrix4x4> birdM = new List<Matrix4x4>();

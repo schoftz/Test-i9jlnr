@@ -193,6 +193,19 @@ namespace MostWanted
 #endif
         }
 
+        static readonly Collider[] nearBuf = new Collider[16];
+        /// <summary>Yakında (r) başka bir araç (rigidbody'li) var mı?</summary>
+        public static bool CarNearby(Vector3 p, float r, Rigidbody ignore)
+        {
+            int n = Physics.OverlapSphereNonAlloc(p + Vector3.up * 0.8f, r, nearBuf);
+            for (int i = 0; i < n; i++)
+            {
+                var rb = nearBuf[i].attachedRigidbody;
+                if (rb != null && rb != ignore && !nearBuf[i].isTrigger) return true;
+            }
+            return false;
+        }
+
         public static Vector3 Flat(Vector3 v) { v.y = 0f; return v; }
 
         public static float FlatDist(Vector3 a, Vector3 b)

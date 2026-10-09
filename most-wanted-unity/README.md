@@ -64,6 +64,7 @@ Play'e bas. Oyun her şeyi (dünya, araçlar, polis, arayüz) çalışma anında
 | M / Tab | Büyük harita (tekerlek: yakınlaştır, WASD/sürükle: kaydır) |
 | R | Aracı düzelt |
 | H | Korna |
+| (Garajda) Motor Sesi ◀ ▶ | Her araca istediğin motor sesi (kozmetik) |
 | F | FPS / performans göstergesi |
 | Esc | Duraklat menüsü |
 | Drag yarışında | E vites ↑, Q vites ↓, A/D şerit değiştir |
@@ -94,8 +95,10 @@ Play'e bas. Oyun her şeyi (dünya, araçlar, polis, arayüz) çalışma anında
   mükemmel vites, şerit değiştirme). 3 YZ rakip, lastik bandı, nitro kullanımı. Teslimat işleri.
 - **Kara Liste (B):** 5 rakip (#5 Kobra → #1 Kral). Meydan okumak için yarış galibiyeti + kariyer ödülü +
   kilometre taşı gerekir. Yenince ödül ve rakibin arabası.
-- **Garaj (E):** satın al, %60'a sat, seç, boya, 7 performans paketi (Motor, Turbo, Şanzıman, Süspansiyon, Lastik,
-  Nitro, Fren; her biri 3 seviye). İlerleme PlayerPrefs'e JSON olarak kaydedilir.
+- **Garaj (E):** satın al, %60'a sat, seç, **18 boya** (inci beyazı, mat siyah, şeker kırmızı, MW gümüş/mavi, bronz,
+  altın…; metalik/parlaklık dahil, garajda canlı önizleme; "Fabrika rengine dön"), **Motor Sesi** değişimi,
+  8 performans paketi (Motor, Turbo, Şanzıman, Süspansiyon, Lastik, Nitro, Fren, **Egzoz** — egzoz sesi yükselir,
+  daha çok patlama, vites atarken "BANG"; her biri 3 seviye). İlerleme PlayerPrefs'e JSON olarak kaydedilir.
 
 ---
 
@@ -156,6 +159,20 @@ için `Assets/Resources/EngineSounds/default/`. Ortak efektler: `Assets/Resource
   araç ses paketleri ("Realistic Car Sounds", "Car Engine Sound Pack" vb. — lisansı kontrol et), Fab'daki ücretsiz ses paketleri.
   Kaynağı ve lisansı CarRegistry'deki `credit` alanına yaz (Emeği Geçenler ekranında görünür).
 
+### Motor tipleri (prosedürel)
+3 silindir, 4 silindir, 5 silindir (Audi tarzı "warble"), Boxer 4 (Subaru "rumble"), sıralı 6, V6 (VQ "rasp"),
+V8 muscle (crossplane "burble"), V8 düz krank (çığlık), V10, V12, Rotary (Wankel "brap"), Dizel (takırtı),
+Elektrik (ıslık + inverter tonu), Boxer 6 (Porsche), W16 (Bugatti: derin, pürüzsüz, dört turbo hava akışı). Ek: küçük turbo (hızlı dolar, ince ıslık), büyük turbo (gecikmeli, gaz kesince
+"stututu"), supercharger uğultusu. Aynı tip araçlar da formant/emme/düzensizlik açısından hafifçe farklıdır; trafik ve
+polis rastgele varyasyon alır. Egzoz patlamaları: perdesi düşen kalın "thud" (70–120 Hz) + 300–3000 Hz çıtırtı + kısa oda yankısı, "bap-bap-brrap" dizileri; sadece 3000 rpm üstünde gaz kesince, kalkışta yok. Alevler aracın gerçek egzoz uçlarından çıkar (Cybertruck: mavi elektrik parıltısı).
+Paket araçları (gerçek modeller, FBX kaynak yollarından): **Mini John Cooper Works** (başlangıç, I4 turbo), **Dodge
+Challenger SRT Hellcat** (V8 + supercharger, polis devriyesi), **Ford F-150 Raptor** (EcoBoost V6), **BMW M4 Competition**
+(I6 twin-turbo, sivil polis), **Tesla Cybertruck** (elektrik, ağır polis), **Nissan GT-R R35** (V6 twin-turbo),
+**Toyota Supra MK4 A80** (2JZ I6, büyük turbo), **Porsche 911 Turbo S** (boxer 6 turbo), **Nissan Skyline GT-R R34**
+(RB26 I6 twin-turbo, koleksiyon fiyatı), **Bugatti Chiron** (W16 dört turbo, ₺3.200.000 — kara liste #1).
+Fiyatlar gerçek piyasa fiyatlarıyla orantılı; tork/ağırlık/vites sayısı/devir gerçek değerler.
+`Tools/physics_sim/RealCarsSim.cs` gerçek ve oyun 0-100/azami hız değerlerini karşılaştırır.
+
 ### Prosedürel yedek (dosya yoksa)
 Silindir ateşleme darbeleri (devir/60 × silindir/2), her darbe gürültü + basınç vuruşu, 3 rezonanslı egzoz
 formantı, krank harmonikleri, emme ve mekanik gürültü. Karakter: **I4** (Hatch, Tuner S), **I6** (Coupe, GT-R,
@@ -167,6 +184,13 @@ YZ araçları 3B ses (mesafe zayıflaması, hafif doppler); sadece en yakın 4 Y
 Polis sireni "wail" ve "yelp" arasında geçiş yapar.
 
 ---
+
+## 3d. Arayüz (HUD)
+Sağ altta analog devir saati (0–9 ×1000 rpm, kırmızı bölge, ibre), büyük italik hız (KM/S), üstte vites;
+devir yayının içinde ince **nitro** (mavi) ve **speedbreaker** (turuncu) çubukları. Sol altta yuvarlak minimap
+(araç yönü yukarı, K = kuzey). Sağ üstte para. Takipte üst ortada yıldızlar + sakinleşme/yakalanma çubukları.
+**Sadece yarışta:** sol üstte **SIRA x / n** ve canlı sıralama listesi (fark saniye), üst ortada **GEÇERLİ TUR**
+süresi, sağ üstte **TUR x / n** (tur yarışında) veya radar toplamı.
 
 ## 4. Performans (MacBook / Retina)
 

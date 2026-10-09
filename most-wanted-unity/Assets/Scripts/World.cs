@@ -283,7 +283,7 @@ namespace MostWanted
                 var thin = new List<int>();
                 for (int i = 0; i < path.Count; i += 2) thin.Add(path[i]);
                 if (thin[thin.Count - 1] != path[path.Count - 1]) thin.Add(path[path.Count - 1]);
-                var def = new RaceDef { name = names[k], prize = 3000 + k * 1000, route = RouteFromNodes(thin, false) };
+                var def = new RaceDef { name = names[k], prize = 9000 + k * 3000, route = RouteFromNodes(thin, false) };
                 def.type = k == 4 ? RaceType.Speedtrap : k == 5 ? RaceType.Tollbooth : RaceType.Sprint;
                 if (def.type == RaceType.Speedtrap)
                     for (int i = 1; i < 4; i++) def.special.Add(def.route.Count * i / 4);

@@ -21,6 +21,11 @@ namespace MostWanted
         public int drive = 1;
         [Range(0.7f, 1.5f)] public float grip = 1f;
         public float downforce = 1f;
+        [Tooltip("İleri vites sayısı (1 = elektrikli tek oran)")]
+        public int gears = 6;
+        [Header("Bilgi (gerçek değerler, garajda gösterilir)")]
+        public int powerHp = 0;
+        public float zeroTo100 = 0f;
         [Header("Ses")]
         [Tooltip("I4, I6, F6, V8, V10 (boşsa tork/devirden tahmin edilir)")]
         public string engineType = "";
@@ -44,5 +49,6 @@ namespace MostWanted
     public class CarRegistry : ScriptableObject
     {
         public List<CarEntry> cars = new List<CarEntry>();
+        [HideInInspector] public int presetVersion = 0;
     }
 }

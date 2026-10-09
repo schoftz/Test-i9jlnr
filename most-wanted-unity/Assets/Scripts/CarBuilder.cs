@@ -20,11 +20,12 @@ namespace MostWanted
             WheelInfo[] wi = null;
             Bounds body = new Bounds(new Vector3(0, 0.75f, 0), new Vector3(1.9f, 1.3f, def.length));
             var paintMats = new List<Material>();
+            List<Vector3> exhaustTips = null;
             var brakeMats = new List<Material>();
             var headMats = new List<Material>();
             if (def.prefab != null)
             {
-                try { wi = FitModel(def, vis, ref body, paintMats, brakeMats, headMats); }
+                try { wi = FitModel(def, vis, ref body, paintMats, brakeMats, headMats); exhaustTips = FindExhaustTips(vis); }
                 catch (System.Exception e) { Debug.LogWarning("Model oturtulamadı (" + def.id + "): " + e.Message); wi = null; }
                 if (wi == null)
                 {
@@ -41,17 +42,11 @@ namespace MostWanted
             rb.mass = def.massKg;
             U.SetDamping(rb, 0.01f, 0.25f);
             rb.interpolation = RigidbodyInterpolation.Interpolate;
+            rb.maxDepenetrationVelocity = 4f;
             rb.collisionDetectionMode = role == CarRole.Player ? CollisionDetectionMode.ContinuousDynamic : CollisionDetectionMode.Continuous;
 
-            float W = Mathf.Clamp(body.size.x, 1.5f, 2.6f), L = body.size.z, H = Mathf.Clamp(body.size.y, 0.9f, 2.2f);
-            float bottom = Mathf.Max(0.28f, body.min.y + 0.12f);
-            var lower = go.AddComponent<BoxCollider>();
-            float lowTop = bottom + H * 0.42f;
-            lower.center = new Vector3(body.center.x, (bottom + lowTop) * 0.5f, body.center.z);
-            lower.size = new Vector3(W * 0.98f, lowTop - bottom, L * 0.98f);
-            var upper = go.AddComponent<BoxCollider>();
-            upper.center = new Vector3(body.center.x, (lowTop + body.max.y) * 0.5f, body.center.z - L * 0.05f);
-            upper.size = new Vector3(W * 0.8f, Mathf.Max(0.2f, body.max.y - lowTop), L * 0.5f);
+            float W = Mathf.Clamp(body.size.x, 1.5f, 2.6f), L = body.size.z;
+            AddBodyColliders(go, body, wi);
 
             // alçak ağırlık merkezi (aks yüksekliği civarı)
             float wheelR = 0f; foreach (var w in wi) wheelR += w.radius; wheelR /= 4f;
@@ -66,7 +61,17 @@ namespace MostWanted
             car.isPlayer = role == CarRole.Player;
             car.comHeight = com;
             car.wheelRadius = wheelR;
-            car.wheelBase = Mathf.Abs(wi[0].pos.z - wi[2].pos.z);
+            // öz-test: ön aks (direksiyon) araç ilerisinde olmalı
+            if ((wi[0].pos.z + wi[1].pos.z) < (wi[2].pos.z + wi[3].pos.z))
+            {
+                var t0 = wi[0]; var t1 = wi[1]; wi[0] = wi[2]; wi[1] = wi[3]; wi[2] = t0; wi[3] = t1;
+                Debug.LogWarning("[MW] " + def.displayName + ": ön/arka aks ters bulundu, düzeltildi.");
+            }
+            if (wi[0].pos.x > wi[1].pos.x) { var t = wi[0]; wi[0] = wi[1]; wi[1] = t; }
+            if (wi[2].pos.x > wi[3].pos.x) { var t = wi[2]; wi[2] = wi[3]; wi[3] = t; }
+            car.wheelBase = Mathf.Max(1.8f, Mathf.Abs(wi[0].pos.z - wi[2].pos.z));
+            if (role == CarRole.Player)
+                Debug.Log("[MW] " + def.displayName + ": ön teker z=" + wi[0].pos.z.ToString("0.00") + "/" + wi[1].pos.z.ToString("0.00") + ", arka z=" + wi[2].pos.z.ToString("0.00") + ", dingil mesafesi " + car.wheelBase.ToString("0.00") + " m — direksiyon OK");
             car.stabilityAssist = role == CarRole.Player ? 0.45f : 0.8f;
             car.paintMats = paintMats; car.brakeMats = brakeMats; car.headMats = headMats;
 
@@ -93,7 +98,7 @@ namespace MostWanted
             car.Configure(def, tune);
 
             // efektler
-            AddEffects(car, body, role);
+            AddEffects(car, body, role, exhaustTips, def);
 
             Color ic = role == CarRole.Player ? new Color(1f, 0.85f, 0f) : role == CarRole.Police ? new Color(1f, 0.1f, 0.1f) :
                        role == CarRole.Racer ? new Color(1f, 0.35f, 1f) : new Color(0.75f, 0.75f, 0.75f);
@@ -104,6 +109,38 @@ namespace MostWanted
             rb.position = pos;
             rb.rotation = rot;
             return car;
+        }
+
+        /// <summary>
+        /// Gövde çarpıştırıcıları: alt kutu (eşik yüksekliği, tekerlek iz genişliği) + üst kutu (kabin, daha dar/kısa).
+        /// Görselden ~6 cm içeride: yanından geçerken yanlış "çarpışma" olmasın. Ayna/kanat/ışık çubuğu dahil değil.
+        /// </summary>
+        static void AddBodyColliders(GameObject go, Bounds body, WheelInfo[] wi)
+        {
+            const float inset = 0.06f;
+            float track = Mathf.Abs(wi[1].pos.x - wi[0].pos.x) + wi[0].radius * 0.7f;
+            float W = Mathf.Min(Mathf.Clamp(body.size.x, 1.4f, 2.5f), track + 0.25f) - inset * 2f;
+            float L = body.size.z - inset * 2f;
+            float H = Mathf.Clamp(body.size.y, 0.9f, 2.2f);
+            float bottom = Mathf.Max(0.3f, body.min.y + 0.15f);
+            float lowTop = Mathf.Min(bottom + H * 0.45f, body.max.y - 0.25f);
+            var lower = go.AddComponent<BoxCollider>();
+            lower.center = new Vector3(body.center.x, (bottom + lowTop) * 0.5f, body.center.z);
+            lower.size = new Vector3(W, Mathf.Max(0.2f, lowTop - bottom), L);
+            var upper = go.AddComponent<BoxCollider>();
+            upper.center = new Vector3(body.center.x, (lowTop + body.max.y - inset) * 0.5f, body.center.z - L * 0.04f);
+            upper.size = new Vector3(W * 0.78f, Mathf.Max(0.15f, body.max.y - inset - lowTop), L * 0.5f);
+        }
+
+        static readonly string[] AppendageWords = { "mirror", "ayna", "wing", "spoiler", "kanat", "antenna", "extra", "lightbar", "neon", "exhaust", "exhust" };
+        static bool IsAppendage(Transform t, Transform root)
+        {
+            for (var x = t; x != null && x != root; x = x.parent)
+            {
+                string n = x.name.ToLowerInvariant();
+                foreach (var w in AppendageWords) if (n.Contains(w)) return true;
+            }
+            return false;
         }
 
         // ------------------------------------------------------------------ Model oturtma
@@ -245,7 +282,7 @@ namespace MostWanted
             {
                 bool isWheel = false;
                 foreach (var w in result) if (w.vis != null && rend.transform.IsChildOf(w.vis)) isWheel = true;
-                if (isWheel) continue;
+                if (isWheel || IsAppendage(rend.transform, inst.transform)) continue;
                 if (!has) { bb = rend.bounds; has = true; } else bb.Encapsulate(rend.bounds);
             }
             body = bb;
@@ -375,16 +412,100 @@ namespace MostWanted
         // ------------------------------------------------------------------ Efektler
         static Material smokeMat, flameMat;
 
-        static void AddEffects(CarController car, Bounds body, CarRole role)
+        static Material evGlowMat;
+
+        /// <summary>
+        /// Egzoz uçları: "Exhaust/Exhust" malzemeli alt-mesh'ler veya adında exhaust/egzoz/muffler/tip geçen objeler.
+        /// Alt-mesh sınırının en arka kısmı genişliğe göre 1/2/4 uca bölünür (çift/dörtlü egzoz).
+        /// </summary>
+        static List<Vector3> FindExhaustTips(Transform vis)
+        {
+            var tips = new List<Vector3>();
+            bool has = false; Bounds b = new Bounds();
+            foreach (var rend in vis.GetComponentsInChildren<Renderer>())
+            {
+                var mf = rend.GetComponent<MeshFilter>();
+                var mesh = mf != null ? mf.sharedMesh : null;
+                string rn = rend.name.ToLowerInvariant();
+                bool nameHit = rn.Contains("exhaust") || rn.Contains("exhust") || rn.Contains("egzoz") || rn.Contains("muffler") || rn.Contains("tip");
+                var mats = rend.sharedMaterials;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    string mn = mats[i] != null ? mats[i].name.ToLowerInvariant() : "";
+                    bool matHit = mn.Contains("exhaust") || mn.Contains("exhust");
+                    if (!matHit && !(nameHit && i == 0)) continue;
+                    Bounds wb;
+                    if (mesh != null && i < mesh.subMeshCount && !nameHit)
+                    {
+                        var lb = mesh.GetSubMesh(i).bounds;
+                        // yerel sınırları vis uzayına çevir (8 köşe)
+                        wb = new Bounds(rend.transform.TransformPoint(lb.center), Vector3.zero);
+                        for (int k = 0; k < 8; k++)
+                        {
+                            Vector3 c = lb.center + Vector3.Scale(lb.extents, new Vector3((k & 1) == 0 ? -1 : 1, (k & 2) == 0 ? -1 : 1, (k & 4) == 0 ? -1 : 1));
+                            wb.Encapsulate(rend.transform.TransformPoint(c));
+                        }
+                    }
+                    else wb = rend.bounds;
+                    if (!has) { b = wb; has = true; } else b.Encapsulate(wb);
+                }
+            }
+            if (!has || b.size.x < 0.02f) return null;
+            Vector3 lmin = vis.InverseTransformPoint(b.min), lmax = vis.InverseTransformPoint(b.max);
+            float w = Mathf.Abs(lmax.x - lmin.x), x0 = Mathf.Min(lmin.x, lmax.x);
+            float z = Mathf.Min(lmin.z, lmax.z), y = (lmin.y + lmax.y) * 0.5f;
+            int n = w > 1.1f ? 4 : w > 0.4f ? 2 : 1;
+            if (n == 4 && w > 1.4f) n = 2;   // geniş aralık: iki köşe çifti
+            for (int i = 0; i < n; i++)
+            {
+                float t = n == 1 ? 0.5f : (n == 2 ? (i == 0 ? 0.12f : 0.88f) : 0.15f + i * 0.7f / 3f);
+                tips.Add(new Vector3(x0 + w * t, y, z - 0.05f));
+            }
+            return tips;
+        }
+
+        static void AddEffects(CarController car, Bounds body, CarRole role, List<Vector3> tips, CarEntry def)
         {
             if (flameMat == null) flameMat = U.Emissive(new Color(0.1f, 0.3f, 1f), new Color(0.6f, 1.6f, 6f));
-            float y = Mathf.Max(0.3f, body.min.y + 0.25f);
-            for (int s = -1; s <= 1; s += 2)
+            if (evGlowMat == null) evGlowMat = U.Emissive(new Color(0.2f, 0.7f, 1f), new Color(0.4f, 2.5f, 5f));
+            bool electric = def != null && (def.engineType ?? "").ToUpperInvariant() == "EV";
+            car.electric = electric;
+            if (tips == null || tips.Count == 0)
             {
-                var f = U.Prim(PrimitiveType.Sphere, "NitroAlev", car.transform, new Vector3(s * 0.35f, y, body.min.z - 0.35f), new Vector3(0.13f, 0.13f, 0.7f), flameMat);
-                f.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
-                f.SetActive(false);
-                car.flames.Add(f.transform);
+                float y = Mathf.Max(0.3f, body.min.y + 0.25f);
+                float half = body.size.x * 0.38f;
+                tips = new List<Vector3> { new Vector3(-half, y, body.min.z - 0.02f), new Vector3(half, y, body.min.z - 0.02f) };
+            }
+            if (electric)
+            {
+                // elektrikli: alev yok, nitroda arka difüzörde mavi elektrik parıltısı
+                var gl = U.Prim(PrimitiveType.Cube, "ElektrikParilti", car.transform, new Vector3(0, Mathf.Max(0.35f, body.min.y + 0.3f), body.min.z - 0.05f), new Vector3(body.size.x * 0.7f, 0.06f, 0.06f), evGlowMat);
+                gl.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
+                gl.SetActive(false);
+                car.flames.Add(gl.transform);
+                car.flameBaseScale = gl.transform.localScale;
+            }
+            else
+            {
+                foreach (var tp in tips)
+                {
+                    var pivot = new GameObject("EgzozUcu").transform;
+                    pivot.SetParent(car.transform, false);
+                    pivot.localPosition = tp;
+                    var f = U.Prim(PrimitiveType.Sphere, "NitroAlev", pivot, new Vector3(0, 0, -0.3f), new Vector3(0.13f, 0.13f, 0.6f), flameMat);
+                    f.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
+                    f.SetActive(false);
+                    car.flames.Add(f.transform);
+                    car.exhaustTips.Add(pivot);
+                }
+                // geri tepme ışığı (egzoz uçlarının ortasında tek küçük ışık)
+                if (role != CarRole.Traffic)
+                {
+                    Vector3 avg = Vector3.zero; foreach (var tp in tips) avg += tp; avg /= tips.Count;
+                    var lg = new GameObject("PatlamaIsigi"); lg.transform.SetParent(car.transform, false); lg.transform.localPosition = avg + Vector3.back * 0.4f;
+                    var l = lg.AddComponent<Light>(); l.type = LightType.Point; l.range = 6f; l.intensity = 5f; l.color = new Color(1f, 0.55f, 0.2f); l.shadows = LightShadows.None; l.enabled = false;
+                    car.popLight = l;
+                }
             }
             if (role == CarRole.Traffic) return;
             if (smokeMat == null)
@@ -453,11 +574,10 @@ namespace MostWanted
             {
                 for (int i = vis.childCount - 1; i >= 0; i--) Object.Destroy(vis.GetChild(i).gameObject);
                 pm.Clear();
-                ProceduralBody(def, vis, ref body, pm, bm, hm);
+                wi = ProceduralBody(def, vis, ref body, pm, bm, hm);
             }
             foreach (var m in pm) U.ApplyPaint(m, paint);
-            var bc = go.AddComponent<BoxCollider>();
-            bc.center = body.center; bc.size = body.size;
+            AddBodyColliders(go, body, wi);
             foreach (var r in go.GetComponentsInChildren<Renderer>()) r.gameObject.layer = OptimizationManager.TrafficLayer;
             return go;
         }

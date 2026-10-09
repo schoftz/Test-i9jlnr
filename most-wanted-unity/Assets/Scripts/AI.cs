@@ -59,7 +59,7 @@ namespace MostWanted
     public class TrafficDriver : AIDriver
     {
         public int prevNode, nextNode;
-        public bool far;
+        public bool far, hidden;
 
         public void Init(int a, int b) { prevNode = a; nextNode = b; }
 
@@ -97,6 +97,7 @@ namespace MostWanted
         /// <summary>Uzak trafik: fizik kapalı, şerit boyunca kayar.</summary>
         public void SetFar(bool f)
         {
+            if (hidden) return;
             if (far == f) return;
             far = f;
             car.rb.isKinematic = f;
@@ -105,7 +106,7 @@ namespace MostWanted
 
         void Update()
         {
-            if (!far || !WorldReady) return;
+            if (!far || hidden || !WorldReady) return;
             Vector3 tgt = LaneTarget();
             AdvanceIfReached(tgt, 3f);
             tgt = LaneTarget();
@@ -253,6 +254,7 @@ namespace MostWanted
             foreach (var c in cars)
             {
                 float d = U.FlatDist(c.transform.position, pp);
+                if (c.hidden) { Respawn(c, pp); continue; }
                 if (d > 400f) Respawn(c, pp);
                 else c.SetFar(d > 120f);
             }
@@ -287,6 +289,15 @@ namespace MostWanted
             Vector3 pa = graph.nodes[a], pb = graph.nodes[b];
             Vector3 lp = graph.LanePoint(a, b);
             Vector3 pos = Vector3.Lerp(pa + (lp - pb), lp, 0.3f) + Vector3.up * 0.4f;
+            if (U.CarNearby(pos, 4.5f, d.car.rb) || (Game.I.player != null && U.FlatDist(pos, Game.I.player.transform.position) < 60f))
+            {
+                // uygun değil: gizle, bir sonraki kontrolde tekrar dene
+                d.car.rb.isKinematic = true; d.far = true; d.hidden = true;
+                d.car.Teleport(new Vector3(pos.x, -500f, pos.z), Quaternion.identity);
+                d.Init(a, b);
+                return;
+            }
+            d.hidden = false;
             d.car.Teleport(pos, Quaternion.LookRotation(U.Flat(pb - pa).normalized));
             d.Init(a, b);
             d.far = false; d.car.rb.isKinematic = false;
@@ -433,6 +444,7 @@ namespace MostWanted
             var rb = g.AddComponent<Rigidbody>();
             rb.mass = mass;
             rb.isKinematic = true;
+            rb.maxDepenetrationVelocity = 4f;
             g.AddComponent<BreakerPiece>();
             pieces.Add(rb);
         }

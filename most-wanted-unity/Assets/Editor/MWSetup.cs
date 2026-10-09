@@ -104,6 +104,14 @@ namespace MostWanted.EditorTools
                     var keep = System.Enum.Parse(prop.PropertyType, "KeepAll");
                     if (!prop.GetValue(null, null).Equals(keep)) { prop.SetValue(null, keep, null); Debug.Log("[MW] BatchRendererGroup varyantları: Keep All"); }
                 }
+                // GRD varsayılan kapalı (Keep All ayarı yapılmadıysa uyarı verir); oyun içinden açılabilir
+                var gp = typeof(UniversalRenderPipelineAsset).GetProperty("gpuResidentDrawerMode");
+                if (gp != null && gp.PropertyType.IsEnum && System.Enum.IsDefined(gp.PropertyType, "Disabled") && !gp.GetValue(asset, null).ToString().Equals("Disabled"))
+                {
+                    gp.SetValue(asset, System.Enum.Parse(gp.PropertyType, "Disabled"), null);
+                    EditorUtility.SetDirty(asset);
+                    Debug.Log("[MW] GPU Resident Drawer varsayılan olarak kapatıldı.");
+                }
                 AssetDatabase.SaveAssets();
             }
             catch (System.Exception e) { Debug.LogWarning("[MW] GRD ayarı yapılamadı: " + e.Message); }
@@ -112,23 +120,40 @@ namespace MostWanted.EditorTools
         // ------------------------------------------------------------------ Arabalar
         struct Preset
         {
-            public string name; public int price, drive; public float mass, torque, redline, top, grip, down, length; public string police; public bool traffic; public Color color; public string eng; public bool turbo;
+            public string name; public int price, drive, gears, hp; public float mass, torque, redline, top, grip, down, length, zero100;
+            public string police; public bool traffic; public Color color; public string eng; public bool turbo; public int turboSize; public bool sc;
         }
 
-        // InvoGames paketi için Most Wanted tarzı isimler ve değerler (Car N -> değerler)
+        // InvoGames paketi: FBX kaynak yollarından (D:\\Cars\\<marka>\\...) çıkarılan gerçek modeller ve gerçek dünya verileri.
+        // Fiyatlar gerçek piyasa fiyatlarıyla orantılı (₺ ≈ $). Tork/devir/vites/ağırlık üreticiden; 0-100 bilgi amaçlı.
         static readonly Dictionary<string, Preset> Presets = new Dictionary<string, Preset>
         {
-            { "car 3",  new Preset { name = "Kompakt Hatch", eng = "I4", turbo = false, price = 0,      drive = 0, mass = 1200, torque = 260, redline = 6800, top = 205, grip = 1.00f, down = 0.8f, length = 4.1f,  traffic = true, color = new Color(0.9f,0.9f,0.9f) } },
-            { "car 10", new Preset { name = "Sokak Coupe", eng = "I6", turbo = false,   price = 15000,  drive = 1, mass = 1300, torque = 330, redline = 7200, top = 225, grip = 1.00f, down = 0.9f, length = 4.3f,  traffic = true, color = new Color(0.08f,0.2f,0.75f) } },
-            { "car 1",  new Preset { name = "Tuner S", eng = "I4", turbo = true,       price = 26000,  drive = 2, mass = 1350, torque = 400, redline = 7800, top = 245, grip = 1.05f, down = 1.0f, length = 4.4f,  traffic = true, color = new Color(0.95f,0.7f,0.05f) } },
-            { "car 4",  new Preset { name = "Coupe RS", eng = "I6", turbo = true,      price = 38000,  drive = 1, mass = 1380, torque = 450, redline = 7500, top = 255, grip = 1.06f, down = 1.0f, length = 4.45f, traffic = true, police = "patrol", color = new Color(0.75f,0.04f,0.04f) } },
-            { "car 7",  new Preset { name = "Bulldog SUV", eng = "V8", turbo = false,   price = 42000,  drive = 2, mass = 2100, torque = 650, redline = 6200, top = 235, grip = 0.95f, down = 0.7f, length = 4.9f,  traffic = true, police = "suv", color = new Color(0.55f,0.57f,0.6f) } },
-            { "car 9",  new Preset { name = "Titan Pikap", eng = "V8", turbo = false,   price = 46000,  drive = 2, mass = 2300, torque = 700, redline = 5800, top = 230, grip = 0.93f, down = 0.6f, length = 5.0f,  traffic = true, color = new Color(0.1f,0.6f,0.2f) } },
-            { "car 2",  new Preset { name = "Muscle V8", eng = "V8", turbo = false,     price = 50000,  drive = 1, mass = 1650, torque = 620, redline = 6500, top = 265, grip = 0.97f, down = 0.8f, length = 4.8f,  traffic = true, color = new Color(0.05f,0.05f,0.06f) } },
-            { "car 8",  new Preset { name = "Drift Spec", eng = "I6", turbo = true,    price = 62000,  drive = 1, mass = 1320, torque = 520, redline = 8200, top = 270, grip = 1.02f, down = 1.1f, length = 4.4f,  traffic = false, color = new Color(1f,0.4f,0f) } },
-            { "car 6",  new Preset { name = "Street GT-R", eng = "I6", turbo = true,   price = 85000,  drive = 2, mass = 1500, torque = 580, redline = 8000, top = 290, grip = 1.12f, down = 1.2f, length = 4.5f,  traffic = false, police = "undercover", color = new Color(0.5f,0.1f,0.65f) } },
-            { "car 5",  new Preset { name = "Süper Kanat", eng = "V10", turbo = false,   price = 120000, drive = 1, mass = 1450, torque = 650, redline = 8800, top = 315, grip = 1.16f, down = 1.4f, length = 4.55f, traffic = false, color = new Color(0.1f,0.75f,0.85f) } },
+            { "car 3",  new Preset { name = "Mini John Cooper Works",        price = 0,       drive = 0, gears = 8,  hp = 231,  mass = 1300, torque = 320,  redline = 6500,  top = 246, zero100 = 6.1f, grip = 1.00f, down = 0.8f, length = 3.9f,  traffic = true,  eng = "I4",  turbo = true, turboSize = 1, color = new Color(0.8f,0.05f,0.05f) } },
+            { "car 1",  new Preset { name = "Dodge Challenger SRT Hellcat",  price = 75000,   drive = 1, gears = 8,  hp = 717,  mass = 1950, torque = 889,  redline = 6200,  top = 315, zero100 = 3.6f, grip = 1.15f, down = 0.8f, length = 5.0f,  traffic = true,  eng = "V8",  sc = true, police = "patrol", color = new Color(0.05f,0.05f,0.06f) } },
+            { "car 7",  new Preset { name = "Ford F-150 Raptor",             price = 80000,   drive = 2, gears = 10, hp = 450,  mass = 2600, torque = 691,  redline = 6000,  top = 180, zero100 = 5.5f, grip = 0.95f, down = 0.5f, length = 5.9f,  traffic = true,  eng = "V6",  turbo = true, turboSize = 1, color = new Color(0.55f,0.57f,0.6f) } },
+            { "car 10", new Preset { name = "BMW M4 Competition (G82)",      price = 85000,   drive = 1, gears = 8,  hp = 510,  mass = 1725, torque = 650,  redline = 7200,  top = 290, zero100 = 3.9f, grip = 1.12f, down = 1.0f, length = 4.8f,  traffic = true,  eng = "I6",  turbo = true, turboSize = 1, police = "undercover", color = new Color(0.08f,0.2f,0.75f) } },
+            { "car 9",  new Preset { name = "Tesla Cybertruck (Cyberbeast)", price = 100000,  drive = 2, gears = 1,  hp = 845,  mass = 3100, torque = 1500, redline = 16000, top = 209, zero100 = 2.7f, grip = 1.05f, down = 0.6f, length = 5.7f,  traffic = true,  eng = "EV",  police = "suv", color = new Color(0.7f,0.72f,0.74f) } },
+            { "car 5",  new Preset { name = "Nissan GT-R (R35)",             price = 120000,  drive = 2, gears = 6,  hp = 565,  mass = 1752, torque = 633,  redline = 7100,  top = 315, zero100 = 2.9f, grip = 1.18f, down = 1.2f, length = 4.7f,  traffic = false, eng = "V6",  turbo = true, turboSize = 1, color = new Color(0.9f,0.9f,0.92f) } },
+            { "car 6",  new Preset { name = "Toyota Supra MK4 (A80)",        price = 130000,  drive = 1, gears = 6,  hp = 330,  mass = 1510, torque = 441,  redline = 6800,  top = 285, zero100 = 4.6f, grip = 1.08f, down = 1.0f, length = 4.5f,  traffic = false, eng = "I6",  turbo = true, turboSize = 2, color = new Color(1f,0.4f,0f) } },
+            { "car 4",  new Preset { name = "Porsche 911 Turbo S (992)",     price = 230000,  drive = 2, gears = 8,  hp = 650,  mass = 1640, torque = 800,  redline = 7200,  top = 330, zero100 = 2.7f, grip = 1.22f, down = 1.3f, length = 4.55f, traffic = false, eng = "F6",  turbo = true, turboSize = 1, color = new Color(0.75f,0.04f,0.04f) } },
+            { "car 8",  new Preset { name = "Nissan Skyline GT-R (R34)",     price = 250000,  drive = 2, gears = 6,  hp = 330,  mass = 1560, torque = 360,  redline = 8000,  top = 265, zero100 = 4.9f, grip = 0.98f, down = 1.1f, length = 4.6f,  traffic = false, eng = "I6",  turbo = true, turboSize = 2, color = new Color(0.1f,0.3f,0.8f) } },
+            { "car 2",  new Preset { name = "Bugatti Chiron",                price = 3200000, drive = 2, gears = 7,  hp = 1500, mass = 1995, torque = 1600, redline = 6700,  top = 420, zero100 = 2.4f, grip = 1.12f, down = 1.6f, length = 4.55f, traffic = false, eng = "W16", turbo = true, turboSize = 3, color = new Color(0.08f,0.15f,0.4f) } },
         };
+
+        static void ApplyPreset(MostWanted.CarEntry e, Preset pr)
+        {
+            e.displayName = pr.name; e.price = pr.price; e.drive = pr.drive; e.massKg = pr.mass; e.torqueNm = pr.torque;
+            e.redlineRpm = pr.redline; e.topSpeedKmh = pr.top; e.grip = pr.grip; e.downforce = pr.down; e.length = pr.length;
+            e.gears = pr.gears; e.powerHp = pr.hp; e.zeroTo100 = pr.zero100;
+            e.policeRole = pr.police ?? ""; e.inTraffic = pr.traffic; e.defaultColor = pr.color;
+            ApplyAudioPreset(e, pr);
+            e.credit = "Store InvoGames — Car Asset Pack for Arcade & Demolition Racing Games (Standard License)";
+        }
+
+        static void ApplyAudioPreset(MostWanted.CarEntry e, Preset pr)
+        {
+            e.engineType = pr.eng; e.turbo = pr.turbo; e.turboSize = pr.turbo ? Mathf.Max(1, pr.turboSize) : 0; e.supercharger = pr.sc;
+        }
 
         [MenuItem("Most Wanted/Arabaları Tara")]
         public static void ScanCarsMenu() { ScanCars(true); }
@@ -196,10 +221,7 @@ namespace MostWanted.EditorTools
                 Preset pr;
                 if (Presets.TryGetValue(file.ToLowerInvariant(), out pr) && path.ToLowerInvariant().Contains("invogames"))
                 {
-                    e.displayName = pr.name; e.price = pr.price; e.drive = pr.drive; e.massKg = pr.mass; e.torqueNm = pr.torque;
-                    e.redlineRpm = pr.redline; e.topSpeedKmh = pr.top; e.grip = pr.grip; e.downforce = pr.down; e.length = pr.length;
-                    e.policeRole = pr.police ?? ""; e.inTraffic = pr.traffic; e.defaultColor = pr.color; e.engineType = pr.eng; e.turbo = pr.turbo;
-                    e.credit = "Store InvoGames — Car Asset Pack for Arcade & Demolition Racing Games (Standard License)";
+                    ApplyPreset(e, pr);
                 }
                 else
                 {
@@ -208,6 +230,20 @@ namespace MostWanted.EditorTools
                 }
                 reg.cars.Add(e);
                 added++;
+            }
+            // ses ön ayarlarını güncelle (eski kayıtlar için bir kez)
+            if (reg.presetVersion < 4)
+            {
+                foreach (var e in reg.cars)
+                {
+                    if (e.prefab == null) continue;
+                    string pth = AssetDatabase.GetAssetPath(e.prefab).ToLowerInvariant();
+                    Preset pr;
+                    if (pth.Contains("invogames") && Presets.TryGetValue(System.IO.Path.GetFileNameWithoutExtension(pth), out pr)) ApplyPreset(e, pr);
+                }
+                reg.presetVersion = 4;
+                Debug.Log("[MW] Araç kaydı gerçek modellere güncellendi (isim, fiyat, motor, şanzıman).");
+                created = true;
             }
             // silinmiş prefabları temizle
             int removed = reg.cars.RemoveAll(c => c.prefab == null && !string.IsNullOrEmpty(c.id) && !c.id.StartsWith("p_"));

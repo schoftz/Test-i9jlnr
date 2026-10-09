@@ -37,6 +37,45 @@ namespace MostWanted
         Vector3 dragDir, dragRight, dragOrigin;
 
         public Entry PlayerEntry { get { return playerEntry; } }
+        public float lapStart;
+        float[] cumDist;
+
+        /// <summary>Rota boyunca alınan mesafe (m) — sıralama farkları için.</summary>
+        public float DistanceAlong(Entry e)
+        {
+            if (def == null || e == null || e.car == null) return 0f;
+            if (IsDrag) return Vector3.Dot(e.car.transform.position - dragOrigin, dragDir);
+            var r = def.route;
+            if (cumDist == null || cumDist.Length != r.Count + 1)
+            {
+                cumDist = new float[r.Count + 1];
+                for (int i = 1; i < r.Count; i++) cumDist[i] = cumDist[i - 1] + U.FlatDist(r[i - 1], r[i]);
+                cumDist[r.Count] = cumDist[r.Count - 1] + (circuit ? U.FlatDist(r[r.Count - 1], r[0]) : 0f);
+            }
+            float lapLen = cumDist[r.Count];
+            int idx = Mathf.Clamp(e.idx, 0, r.Count - 1);
+            float toNext = U.FlatDist(e.car.transform.position, r[idx]);
+            float d = e.lap * lapLen + cumDist[idx] - toNext;
+            if (e.finished) d += 1e6f - e.place * 1000f;
+            return d;
+        }
+
+        /// <summary>Sıralama: (giriş, lidere saniye farkı).</summary>
+        public List<KeyValuePair<Entry, float>> Standings()
+        {
+            var l = new List<KeyValuePair<Entry, float>>();
+            if (!Active) return l;
+            Entry lead = null; float ld = float.MinValue;
+            foreach (var e in entries) { float d = def.type == RaceType.Speedtrap ? e.trapTotal : DistanceAlong(e); if (d > ld) { ld = d; lead = e; } }
+            foreach (var e in entries)
+            {
+                float d = def.type == RaceType.Speedtrap ? e.trapTotal : DistanceAlong(e);
+                float v = lead != null && lead.car != null ? Mathf.Max(8f, U.Vel(lead.car.rb).magnitude) : 30f;
+                l.Add(new KeyValuePair<Entry, float>(e, def.type == RaceType.Speedtrap ? ld - d : (ld - d) / v));
+            }
+            l.Sort((a, b) => a.Value.CompareTo(b.Value));
+            return l;
+        }
 
         // ---------------------------------------------------------------- başlatma
         public void StartRace(RaceDef d, int rival = -1)
@@ -50,7 +89,7 @@ namespace MostWanted
             rivalIndex = rival;
             circuit = d.type == RaceType.Circuit;
             laps = circuit ? d.laps : 1;
-            raceTime = 0f; endTimer = 0f;
+            raceTime = 0f; endTimer = 0f; lapStart = 0f; cumDist = null;
             entries.Clear();
 
             Vector3 start = d.route[0];
@@ -324,7 +363,7 @@ namespace MostWanted
                     {
                         e.lap++;
                         if (e.lap >= laps) Finish(e, ++finishedCount);
-                        else if (e == playerEntry) Game.I.Toast("Tur " + (e.lap + 1) + "/" + laps);
+                        else if (e == playerEntry) { Game.I.Toast("Tur " + (e.lap + 1) + "/" + laps + "  —  " + FormatTime(raceTime - lapStart)); lapStart = raceTime; }
                     }
                 }
                 else if (e.idx >= r.Count) Finish(e, ++finishedCount);
@@ -336,6 +375,13 @@ namespace MostWanted
                 endTimer += dt;
                 if (endTimer > 4f) Abort();
             }
+        }
+
+        public static string FormatTime(float t)
+        {
+            t = Mathf.Max(0f, t);
+            int m = Mathf.FloorToInt(t / 60f), s = Mathf.FloorToInt(t % 60f), cs = Mathf.FloorToInt((t * 100f) % 100f);
+            return m.ToString("00") + ":" + s.ToString("00") + ":" + cs.ToString("00");
         }
 
         void Finish(Entry e, int place)

@@ -112,22 +112,22 @@ namespace MostWanted
         void BuildRaces()
         {
             var G = grid;
-            races.Add(new RaceDef { name = "Liman Sprinti", type = RaceType.Sprint, prize = 3000, route = RouteFromNodes(Chain(G[0, 1], G[6, 1], G[6, 4], G[3, 4], G[3, 6]), false) });
-            races.Add(new RaceDef { name = "Merkez Turu", type = RaceType.Circuit, laps = 2, prize = 4500, route = RouteFromNodes(Loop(G[1, 1], G[4, 1], G[4, 4], G[1, 4]), true) });
-            races.Add(new RaceDef { name = "Çevre Yolu Kupası", type = RaceType.Circuit, laps = 1, prize = 8000, route = RouteFromNodes(new List<int>(ringLoop), true) });
-            var trap = new RaceDef { name = "Radar Avı", type = RaceType.Speedtrap, prize = 5000, route = RouteFromNodes(Chain(G[0, 5], G[6, 5], G[6, 2], G[0, 2]), false) };
+            races.Add(new RaceDef { name = "Liman Sprinti", type = RaceType.Sprint, prize = 9000, route = RouteFromNodes(Chain(G[0, 1], G[6, 1], G[6, 4], G[3, 4], G[3, 6]), false) });
+            races.Add(new RaceDef { name = "Merkez Turu", type = RaceType.Circuit, laps = 2, prize = 13500, route = RouteFromNodes(Loop(G[1, 1], G[4, 1], G[4, 4], G[1, 4]), true) });
+            races.Add(new RaceDef { name = "Çevre Yolu Kupası", type = RaceType.Circuit, laps = 1, prize = 24000, route = RouteFromNodes(new List<int>(ringLoop), true) });
+            var trap = new RaceDef { name = "Radar Avı", type = RaceType.Speedtrap, prize = 15000, route = RouteFromNodes(Chain(G[0, 5], G[6, 5], G[6, 2], G[0, 2]), false) };
             trap.special.Add(3); trap.special.Add(8); trap.special.Add(14);
             races.Add(trap);
-            var toll = new RaceDef { name = "Gişe Koşusu", type = RaceType.Tollbooth, prize = 4000, route = RouteFromNodes(Chain(G[5, 0], G[5, 6], G[2, 6], G[2, 0]), false) };
+            var toll = new RaceDef { name = "Gişe Koşusu", type = RaceType.Tollbooth, prize = 12000, route = RouteFromNodes(Chain(G[5, 0], G[5, 6], G[2, 6], G[2, 0]), false) };
             for (int i = 3; i < toll.route.Count; i += 3) toll.special.Add(i);
             races.Add(toll);
             // Drag: güney çevre yolu düz hattı (4 şerit)
-            var drag = new RaceDef { name = "Çevre Yolu Dragı", type = RaceType.Drag, prize = 3500 };
+            var drag = new RaceDef { name = "Çevre Yolu Dragı", type = RaceType.Drag, prize = 10500 };
             drag.route.Add(new Vector3(-Ring + 20f, 0, -Ring));
             drag.route.Add(new Vector3(Size + Ring - 40f, 0, -Ring));
             drag.dragLanes = new[] { -6.75f, -2.25f, 2.25f, 6.75f };
             races.Add(drag);
-            races.Add(new RaceDef { name = "Gece Ekspresi", type = RaceType.Sprint, prize = 5500, route = RouteFromNodes(Chain(G[6, 6], G[6, 3], G[2, 3], G[2, 0], G[0, 0]), false) });
+            races.Add(new RaceDef { name = "Gece Ekspresi", type = RaceType.Sprint, prize = 16500, route = RouteFromNodes(Chain(G[6, 6], G[6, 3], G[2, 3], G[2, 0], G[0, 0]), false) });
         }
 
         List<int> Loop(params int[] corners)

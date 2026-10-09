@@ -112,75 +112,82 @@ namespace MostWanted
         }
 
         // ------------------------------------------------------------------ HUD
+        // ---- yeni sürüş HUD'ı (referans düzen: 1920x1080) ----
+        GUIStyle numBig, numMid, numSmall, lblBold, lblSmall, rowName, rowGap, boxNum;
+        Texture2D arcTex; int arcKey = -1;
+        Material roundMask; bool roundMaskTried;
+        const float ArcStart = 200f, ArcSweep = 260f;   // saat yönü derece (0 = yukarı)
+
+        void InitHud()
+        {
+            numBig = new GUIStyle(GUI.skin.label) { fontSize = 120, fontStyle = FontStyle.BoldAndItalic, alignment = TextAnchor.MiddleRight };
+            numMid = new GUIStyle(GUI.skin.label) { fontSize = 64, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            numSmall = new GUIStyle(GUI.skin.label) { fontSize = 34, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft };
+            lblBold = new GUIStyle(GUI.skin.label) { fontSize = 26, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft };
+            lblSmall = new GUIStyle(GUI.skin.label) { fontSize = 18, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            rowName = new GUIStyle(GUI.skin.label) { fontSize = 19, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft };
+            rowGap = new GUIStyle(GUI.skin.label) { fontSize = 16, fontStyle = FontStyle.Italic, alignment = TextAnchor.MiddleLeft };
+            boxNum = new GUIStyle(GUI.skin.label) { fontSize = 22, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            foreach (var st in new[] { numBig, numMid, numSmall, lblBold, lblSmall, rowName, rowGap, boxNum }) st.normal.textColor = Color.white;
+            rowGap.normal.textColor = new Color(0.85f, 0.9f, 1f);
+        }
+
+        static readonly Color PanelCol = new Color(0.06f, 0.07f, 0.09f, 0.72f);
+
         void DrawHUD(Game g, float W, float H)
         {
+            if (numBig == null) InitHud();
             var p = g.player;
             var pd = g.playerDriver;
             var d = SaveSystem.Data;
             float kmh = p.SpeedKmh;
+            var r = g.race;
+            bool racing = r.Active;
 
             SpeedLines(g, W, H, kmh);
-            Speedometer(g, p, pd, W, H, kmh);
-
-            // sol üst
-            Shadow(new Rect(20, 12, 600, 40), U.Money(d.money), mid);
-            Shadow(new Rect(20, 46, 700, 30), "Kariyer ödülü: " + U.Money(d.careerBounty) + "   Kara Liste: #" + (5 - Mathf.Min(d.rivalsBeaten, 5) > 0 ? (5 - d.rivalsBeaten).ToString() : "1 ✓"), small);
-            var def = p.def;
-            Shadow(new Rect(20, 72, 700, 30), (def != null ? def.displayName : "") + "   •   " + CameraRig.ModeNames[(int)g.rig.mode] + (g.usingImportedMap ? "   •   İthal harita" : "") + (g.district != "" ? "   •   " + g.district : ""), small);
-
+            Tachometer(g, p, pd, W, H, kmh);
             Minimap(g, W, H);
 
-            // takip
+            if (racing) RaceHud(g, r, W, H);
+            else
+            {
+                // serbest sürüş: sağ üstte küçük para + araç/semt
+                Shadow(new Rect(W - 420, 14, 400, 36), U.Money(d.money), Align(numSmall, TextAnchor.MiddleRight));
+                var def = p.def;
+                Shadow(new Rect(W - 620, 50, 600, 26), (def != null ? def.displayName : "") + (g.district != "" ? "  •  " + g.district : "") + "  •  " + CameraRig.ModeNames[(int)g.rig.mode], Align(small, TextAnchor.MiddleRight));
+                Shadow(new Rect(W - 620, 74, 600, 24), "Kariyer ödülü " + U.Money(d.careerBounty), Align(tiny, TextAnchor.MiddleRight));
+            }
+
+            // takip (yarışta yok)
             var pol = g.police;
-            if (pol.pursuit)
+            if (pol.pursuit && !racing)
             {
                 string stars = "";
                 for (int i = 0; i < 5; i++) stars += i < pol.Stars ? "★" : "☆";
                 var st = new GUIStyle(mid) { fontSize = 46, alignment = TextAnchor.MiddleCenter };
                 st.normal.textColor = Mathf.Repeat(Time.unscaledTime, 0.6f) < 0.3f ? new Color(1f, 0.2f, 0.2f) : new Color(0.3f, 0.5f, 1f);
-                GUI.Label(new Rect(W / 2 - 200, 8, 400, 60), stars, st);
+                Rect(new Rect(W / 2 - 230, 6, 460, 120 + (pol.bustProgress > 0.01f ? 44 : 0)), PanelCol);
+                GUI.Label(new Rect(W / 2 - 200, 6, 400, 56), stars, st);
                 var c = Align(small, TextAnchor.MiddleCenter);
-                Shadow(new Rect(W / 2 - 300, 64, 600, 28), "TAKİP  •  Ödül: " + U.Money(pol.bounty) + "  •  Polis: " + pol.CopCount + (pol.heli != null ? "  •  HELİKOPTER" : "") + "  •  " + Mathf.FloorToInt(pol.pursuitTime / 60f) + ":" + Mathf.FloorToInt(pol.pursuitTime % 60f).ToString("00"), c);
-                if (pol.Seen) Shadow(new Rect(W / 2 - 200, 92, 400, 26), "GÖRÜLDÜN!", c);
-                else
-                {
-                    Shadow(new Rect(W / 2 - 200, 92, 400, 26), pol.Hiding ? "SAKLANIYORSUN — SAKİNLEŞME HIZLI" : "SAKİNLEŞME", c);
-                    Bar(new Rect(W / 2 - 160, 120, 320, 16), pol.cooldown, new Color(0.2f, 0.9f, 0.4f));
-                }
+                Shadow(new Rect(W / 2 - 230, 58, 460, 24), "ÖDÜL " + U.Money(pol.bounty) + "   •   POLİS " + pol.CopCount + (pol.heli != null ? "   •   HELİKOPTER" : "") + "   •   " + RaceManager.FormatTime(pol.pursuitTime).Substring(0, 5), c);
+                Shadow(new Rect(W / 2 - 230, 82, 460, 22), pol.Seen ? "GÖRÜLDÜN!" : pol.Hiding ? "SAKLANIYORSUN" : "SAKİNLEŞME", Align(tiny, TextAnchor.MiddleCenter));
+                Bar(new Rect(W / 2 - 180, 106, 360, 12), pol.Seen ? 0f : pol.cooldown, new Color(0.2f, 0.9f, 0.4f));
                 if (pol.bustProgress > 0.01f)
                 {
-                    Shadow(new Rect(W / 2 - 200, 142, 400, 26), "YAKALANIYORSUN!", c);
-                    Bar(new Rect(W / 2 - 160, 170, 320, 16), pol.bustProgress, Color.red);
+                    Shadow(new Rect(W / 2 - 230, 122, 460, 22), "YAKALANIYORSUN!", Align(tiny, TextAnchor.MiddleCenter));
+                    Bar(new Rect(W / 2 - 180, 146, 360, 12), pol.bustProgress, Color.red);
                 }
             }
-            if (pol.radioTime > 0f && !string.IsNullOrEmpty(pol.radio))
+            if (pol.radioTime > 0f && !string.IsNullOrEmpty(pol.radio) && !racing)
             {
-                Rect(new Rect(20, 110, 520, 54), new Color(0, 0, 0, 0.45f));
-                Shadow(new Rect(30, 112, 500, 50), "TELSİZ: " + pol.radio, radioStyle);
-            }
-
-            // yarış
-            var r = g.race;
-            if (r.Active)
-            {
-                Rect(new Rect(W - 340, 110, 320, 140), new Color(0, 0, 0, 0.45f));
-                Shadow(new Rect(W - 325, 114, 300, 36), r.def.name, mid);
-                if (r.def.type == RaceType.Tollbooth)
-                    Shadow(new Rect(W - 325, 150, 300, 40), "Kalan: " + Mathf.Max(0f, r.tollTime).ToString("0.0") + " sn", mid);
-                else
-                    Shadow(new Rect(W - 325, 150, 300, 40), "Sıra: " + r.PlayerPosition() + "/" + r.entries.Count, mid);
-                string extra = r.circuit ? "Tur: " + r.PlayerLap + "/" + r.laps + "   " : "";
-                if (r.def.type == RaceType.Speedtrap && r.PlayerEntry != null) extra = "Radar toplamı: " + Mathf.RoundToInt(r.PlayerEntry.trapTotal) + "   ";
-                Shadow(new Rect(W - 325, 188, 300, 30), extra + "Süre: " + r.raceTime.ToString("0.0"), small);
-                if (r.IsDrag) Shadow(new Rect(W - 325, 214, 300, 30), "E: vites ↑  Q: vites ↓  A/D: şerit", small);
-                if (r.Counting) Shadow(new Rect(0, H / 2 - 160, W, 200), Mathf.CeilToInt(r.countdown).ToString(), center);
-                else if (r.raceTime < 1.2f) Shadow(new Rect(0, H / 2 - 160, W, 200), "BAŞLA!", center);
+                Rect(new Rect(20, 20, 520, 54), PanelCol);
+                Shadow(new Rect(30, 22, 500, 50), "TELSİZ: " + pol.radio, radioStyle);
             }
             if (g.delivery.Active)
             {
-                Rect(new Rect(W - 340, 260, 320, 70), new Color(0, 0, 0, 0.45f));
-                Shadow(new Rect(W - 325, 264, 300, 30), "TESLİMAT  " + U.Money(g.delivery.reward), small);
-                Shadow(new Rect(W - 325, 290, 300, 40), "Kalan: " + Mathf.CeilToInt(g.delivery.timeLeft) + " sn", mid);
+                Rect(new Rect(W - 340, 108, 320, 70), PanelCol);
+                Shadow(new Rect(W - 325, 112, 300, 30), "TESLİMAT  " + U.Money(g.delivery.reward), small);
+                Shadow(new Rect(W - 325, 138, 300, 40), "Kalan: " + Mathf.CeilToInt(g.delivery.timeLeft) + " sn", mid);
             }
 
             // durum yazıları
@@ -191,6 +198,9 @@ namespace MostWanted
             if (p.TiresBlown) { Shadow(new Rect(0, sy, W, 40), "LASTİKLER PATLAK!", cs); sy += 40; }
             if (pd != null && pd.speedbreakerOn) Shadow(new Rect(0, sy, W, 40), "SPEEDBREAKER", cs);
             if (g.NearGarage && g.menu == Game.Menu.None) Shadow(new Rect(0, H - 300, W, 40), "Garaja girmek için [E]", cs);
+            if (racing && r.Counting) Shadow(new Rect(0, H / 2 - 160, W, 200), Mathf.CeilToInt(r.countdown).ToString(), center);
+            else if (racing && r.raceTime < 1.2f) Shadow(new Rect(0, H / 2 - 160, W, 200), "BAŞLA!", center);
+            if (racing && r.IsDrag) Shadow(new Rect(0, H - 330, W, 30), "E: vites ↑   Q: vites ↓   A/D: şerit", Align(small, TextAnchor.MiddleCenter));
 
             for (int i = 0; i < g.toasts.Count; i++)
             {
@@ -201,52 +211,163 @@ namespace MostWanted
                 GUI.Label(tr, g.toasts[i], toastStyle);
                 GUI.color = old;
             }
-            if (g.menu == Game.Menu.None)
-                GUI.Label(new Rect(360, H - 32, 1300, 30), "WASD: Sür  Space: El freni  Shift: Nitro  Q/Sağ tık: Speedbreaker  C: Kamera  E: Garaj  J: İşler  B: Kara Liste  M: Harita  R: Düzelt  F: FPS  Esc: Menü", Align(tiny, TextAnchor.MiddleLeft));
+            if (g.menu == Game.Menu.None && Time.timeSinceLevelLoad < 40f)
+                GUI.Label(new Rect(0, H - 30, W, 28), "WASD sür  •  Space el freni  •  Shift nitro  •  Q speedbreaker  •  C kamera  •  H korna  •  E garaj  •  J işler  •  B kara liste  •  M harita  •  Esc menü", Align(tiny, TextAnchor.MiddleCenter));
         }
 
-        void Speedometer(Game g, CarController p, PlayerDriver pd, float W, float H, float kmh)
+        // ---- yarış blokları: SIRA (sol üst) + sıralama, GEÇERLİ TUR (orta), TUR (sağ üst) ----
+        void RaceHud(Game g, RaceManager r, float W, float H)
+        {
+            var stand = r.Standings();
+            int total = r.entries.Count;
+            int pos = r.PlayerPosition();
+            bool solo = r.def.type == RaceType.Tollbooth;
+
+            if (!solo)
+            {
+                Shadow(new Rect(30, 14, 200, 30), "SIRA", lblBold);
+                Rect(new Rect(30, 46, 74, 84), PanelCol);
+                Shadow(new Rect(30, 46, 74, 84), pos.ToString(), numMid);
+                Shadow(new Rect(112, 60, 120, 60), "/ " + total, numSmall);
+                // canlı sıralama listesi
+                for (int i = 0; i < stand.Count && i < 6; i++)
+                {
+                    var e = stand[i].Key;
+                    float y = 150 + i * 30;
+                    bool me = e == r.PlayerEntry;
+                    Rect(new Rect(30, y, 26, 26), me ? new Color(1f, 0.55f, 0.05f, 0.95f) : new Color(0.9f, 0.9f, 0.92f, 0.95f));
+                    var bn = boxNum; var old = bn.normal.textColor; bn.normal.textColor = Color.black;
+                    GUI.Label(new Rect(30, y, 26, 26), (i + 1).ToString(), bn);
+                    bn.normal.textColor = old;
+                    Rect(new Rect(58, y, 180, 26), PanelCol);
+                    GUI.Label(new Rect(66, y, 172, 26), me ? "SEN" : e.name, rowName);
+                    if (i > 0)
+                    {
+                        string gap = r.def.type == RaceType.Speedtrap ? "-" + Mathf.RoundToInt(stand[i].Value) + " km/s" : "+" + stand[i].Value.ToString("0.000");
+                        Shadow(new Rect(244, y, 120, 26), gap, rowGap);
+                    }
+                }
+            }
+
+            // orta: GEÇERLİ TUR / SÜRE
+            string head = r.def.type == RaceType.Tollbooth ? "KALAN SÜRE" : r.circuit ? "GEÇERLİ TUR" : "SÜRE";
+            float t = r.def.type == RaceType.Tollbooth ? r.tollTime : r.circuit ? r.raceTime - r.lapStart : r.raceTime;
+            Shadow(new Rect(W / 2 - 150, 4, 300, 30), head, Align(lblBold, TextAnchor.MiddleCenter));
+            Rect(new Rect(W / 2 - 100, 36, 200, 40), PanelCol);
+            Shadow(new Rect(W / 2 - 100, 36, 200, 40), RaceManager.FormatTime(t), Align(numSmall, TextAnchor.MiddleCenter));
+
+            // sağ üst: TUR x / n (tur yarışı) veya radar toplamı
+            if (r.circuit)
+            {
+                Shadow(new Rect(W - 190, 14, 120, 30), "TUR", lblBold);
+                Rect(new Rect(W - 190, 46, 74, 84), PanelCol);
+                Shadow(new Rect(W - 190, 46, 74, 84), r.PlayerLap.ToString(), numMid);
+                Shadow(new Rect(W - 108, 60, 100, 60), "/ " + r.laps, numSmall);
+            }
+            else if (r.def.type == RaceType.Speedtrap && r.PlayerEntry != null)
+            {
+                Shadow(new Rect(W - 330, 14, 300, 30), "RADAR TOPLAMI", Align(lblBold, TextAnchor.MiddleRight));
+                Rect(new Rect(W - 230, 46, 200, 46), PanelCol);
+                Shadow(new Rect(W - 230, 46, 200, 46), Mathf.RoundToInt(r.PlayerEntry.trapTotal) + " km/s", Align(numSmall, TextAnchor.MiddleCenter));
+            }
+            Shadow(new Rect(W - 520, 136, 500, 26), r.def.name + "   •   " + U.Money(SaveSystem.Data.money), Align(tiny, TextAnchor.MiddleRight));
+        }
+
+        // ---- devir saati: üretilmiş yay dokusu + çentikler + ibre; büyük italik hız ----
+        Texture2D ArcTexture(int maxK, float redK)
+        {
+            int key = maxK * 1000 + Mathf.RoundToInt(redK * 10f);
+            if (arcTex != null && arcKey == key) return arcTex;
+            const int S = 512;
+            if (arcTex == null) { arcTex = new Texture2D(S, S, TextureFormat.RGBA32, true); arcTex.wrapMode = TextureWrapMode.Clamp; }
+            var px = new Color[S * S];
+            float rOut = 0.485f * S, rIn = 0.472f * S, rRedIn = 0.43f * S;
+            for (int y = 0; y < S; y++)
+                for (int x = 0; x < S; x++)
+                {
+                    float dx = x + 0.5f - S / 2f, dy = y + 0.5f - S / 2f;
+                    float rr = Mathf.Sqrt(dx * dx + dy * dy);
+                    float ang = Mathf.Atan2(dx, dy) * Mathf.Rad2Deg; if (ang < 0f) ang += 360f;   // saat yönü, 0 = yukarı
+                    float rel = Mathf.Repeat(ang - ArcStart, 360f);
+                    Color c = new Color(1, 1, 1, 0);
+                    if (rel <= ArcSweep)
+                    {
+                        float k = rel / ArcSweep * maxK;
+                        float aRing = Mathf.Clamp01(Mathf.Min(rr - rIn + 1f, rOut - rr + 1f));
+                        if (aRing > 0f) c = new Color(1f, 1f, 1f, aRing * 0.95f);
+                        if (k >= redK)
+                        {
+                            float aRed = Mathf.Clamp01(Mathf.Min(rr - rRedIn + 1f, rOut - rr + 1f));
+                            if (aRed > c.a) c = new Color(0.95f, 0.12f, 0.1f, aRed * 0.9f);
+                        }
+                    }
+                    px[y * S + x] = c;
+                }
+            arcTex.SetPixels(px);
+            arcTex.Apply(true);
+            arcKey = key;
+            return arcTex;
+        }
+
+        void Tachometer(Game g, CarController p, PlayerDriver pd, float W, float H, float kmh)
         {
             float R = 150f;
-            Vector2 c = new Vector2(W - 200, H - 200);
-            Rect(new Rect(c.x - R - 10, c.y - R - 10, 2 * R + 20, 2 * R + 60), new Color(0, 0, 0, 0.0f));
-            // devir yayı: -225° .. +45°
-            int ticks = 40;
-            float redFrom = 0.85f;
-            float rpm01 = p.Rpm01;
+            Vector2 c = new Vector2(W - 210, H - 200);
+            int maxK = Mathf.Max(8, Mathf.CeilToInt(p.redline / 1000f) + 1);
+            float redK = p.redline / 1000f * 0.92f;
+            var tex = ArcTexture(maxK, redK);
+            GUI.DrawTexture(new Rect(c.x - R, c.y - R, 2 * R, 2 * R), tex);
+
             var oldM = GUI.matrix;
-            for (int i = 0; i <= ticks; i++)
+            // çentikler ve sayılar
+            for (int i = 0; i <= maxK * 2; i++)
             {
-                float t = i / (float)ticks;
-                float ang = -225f + t * 270f;
-                bool major = i % 5 == 0;
-                Color col = t >= redFrom ? new Color(1f, 0.15f, 0.1f) : Color.white;
-                if (t > rpm01) col.a = 0.25f;
-                GUIUtility.RotateAroundPivot(ang + 90f, c);
-                Rect(new Rect(c.x - (major ? 3 : 1.5f), c.y - R, major ? 6 : 3, major ? 22 : 12), col);
+                float k = i * 0.5f;
+                float ang = ArcStart + k / maxK * ArcSweep;
+                bool major = i % 2 == 0;
+                Color col = k >= redK ? new Color(1f, 0.2f, 0.15f) : Color.white;
+                GUIUtility.RotateAroundPivot(ang, c);
+                Rect(new Rect(c.x - (major ? 1.5f : 1f), c.y - R + 2f, major ? 3f : 2f, major ? 16f : 9f), col);
                 GUI.matrix = oldM;
+                if (major)
+                {
+                    float rad = ang * Mathf.Deg2Rad;
+                    Vector2 np = c + new Vector2(Mathf.Sin(rad), -Mathf.Cos(rad)) * (R - 34f);
+                    var ns = lblSmall; var o = ns.normal.textColor; ns.normal.textColor = col;
+                    GUI.Label(new Rect(np.x - 15, np.y - 12, 30, 24), ((int)k).ToString(), ns);
+                    ns.normal.textColor = o;
+                }
             }
+            // nitro (iç yay) ve speedbreaker (daha iç yay) — ince kavisli çubuklar
+            ArcBar(c, R - 58f, p.nitro, p.nitroActive ? Color.white : Blue, oldM);
+            if (pd != null) ArcBar(c, R - 68f, pd.speedbreaker, pd.speedbreakerOn ? Color.white : Orange, oldM);
             // ibre
-            float na = -225f + rpm01 * 270f;
-            GUIUtility.RotateAroundPivot(na + 90f, c);
-            Rect(new Rect(c.x - 3, c.y - R + 10, 6, R - 10), p.revLimiter ? Color.red : Orange);
+            float rpmK = Mathf.Clamp(p.rpm / 1000f, 0f, maxK);
+            float na = ArcStart + rpmK / maxK * ArcSweep;
+            GUIUtility.RotateAroundPivot(na, c);
+            Rect(new Rect(c.x - 2f, c.y - R + 6f, 4f, R - 6f), p.revLimiter ? new Color(1f, 0.15f, 0.1f) : new Color(1f, 0.25f, 0.15f));
             GUI.matrix = oldM;
-            Rect(new Rect(c.x - 12, c.y - 12, 24, 24), new Color(0.1f, 0.1f, 0.1f, 0.9f));
-            // dijital
-            Shadow(new Rect(c.x - 120, c.y + 10, 240, 80), Mathf.RoundToInt(kmh).ToString(), big);
-            Shadow(new Rect(c.x - 120, c.y + 78, 240, 30), "km/sa", tiny);
+            Rect(new Rect(c.x - 7, c.y - 7, 14, 14), new Color(0.12f, 0.12f, 0.14f, 1f));
+
+            // vites (üstte) + hız (büyük italik) + KM/S
             string gear = p.gear == 0 ? "R" : p.gear.ToString();
-            var gs = new GUIStyle(big) { fontSize = 46 };
-            gs.normal.textColor = p.Shifting ? Orange : Color.white;
-            Shadow(new Rect(c.x - 40, c.y - 80, 80, 60), gear, gs);
-            Shadow(new Rect(c.x - 60, c.y - 30, 120, 26), "x1000 rpm " + (p.rpm / 1000f).ToString("0.0"), tiny);
-            // nitro ve speedbreaker çubukları
-            Shadow(new Rect(c.x - R, c.y + R + 4, 140, 24), "NİTRO", Align(tiny, TextAnchor.MiddleLeft));
-            Bar(new Rect(c.x - R + 62, c.y + R + 8, 2 * R - 62, 16), p.nitro, p.nitroActive ? Color.white : Blue);
-            if (pd != null)
+            var gs = numMid; var go = gs.normal.textColor; gs.normal.textColor = p.Shifting ? Orange : Color.white;
+            Shadow(new Rect(c.x - 20, c.y - 70, 80, 64), gear, gs);
+            gs.normal.textColor = go;
+            Shadow(new Rect(c.x - 150, c.y - 10, 290, 120), Mathf.RoundToInt(kmh).ToString(), numBig);
+            Shadow(new Rect(c.x - 40, c.y + 100, 100, 26), "KM/S", lblSmall);
+        }
+
+        void ArcBar(Vector2 c, float radius, float v, Color col, Matrix4x4 oldM)
+        {
+            const int seg = 48;
+            int lit = Mathf.RoundToInt(Mathf.Clamp01(v) * seg);
+            for (int i = 0; i < seg; i++)
             {
-                Shadow(new Rect(c.x - R, c.y + R + 28, 160, 24), "SPEEDBRK", Align(tiny, TextAnchor.MiddleLeft));
-                Bar(new Rect(c.x - R + 92, c.y + R + 32, 2 * R - 92, 16), pd.speedbreaker, pd.speedbreakerOn ? Color.white : Orange);
+                float ang = ArcStart + (i + 0.5f) / seg * ArcSweep;
+                GUIUtility.RotateAroundPivot(ang, c);
+                Rect(new Rect(c.x - 2.2f, c.y - radius, 4.4f, 5f), i < lit ? col : new Color(1f, 1f, 1f, 0.12f));
+                GUI.matrix = oldM;
             }
         }
 
@@ -271,13 +392,36 @@ namespace MostWanted
 
         void Minimap(Game g, float W, float H)
         {
-            float ms = 280f;
-            Rect mr = new Rect(20, H - ms - 46, ms, ms);
-            Rect(new Rect(mr.x - 4, mr.y - 4, ms + 8, ms + 8), new Color(0, 0, 0, 0.75f));
-            GUI.BeginGroup(mr);
-            if (g.mapRT != null) GUI.DrawTexture(new Rect(0, 0, ms, ms), g.mapRT);
-            // yön hedefi
+            float ms = 270f;
+            Rect mr = new Rect(30, H - ms - 40, ms, ms);
             var p = g.player;
+            if (!roundMaskTried)
+            {
+                roundMaskTried = true;
+                var m = Resources.Load<Material>("MW_RoundMaskMat");
+                if (m != null && m.shader != null && m.shader.isSupported) roundMask = new Material(m);
+            }
+            if (g.mapRT != null)
+            {
+                if (roundMask != null)
+                {
+                    if (Event.current.type == EventType.Repaint)
+                    {
+                        // Graphics.DrawTexture ekran pikseliyle çizer: GUI ölçeğini elle uygula
+                        var m = GUI.matrix;
+                        float sc = m.m00;
+                        Rect(new Rect(mr.x - 5, mr.y - 5, ms + 10, ms + 10), new Color(0, 0, 0, 0f));
+                        GUI.matrix = Matrix4x4.identity;
+                        Graphics.DrawTexture(new Rect(mr.x * sc, mr.y * sc, mr.width * sc, mr.height * sc), g.mapRT, roundMask);
+                        GUI.matrix = m;
+                    }
+                }
+                else GUI.DrawTexture(mr, g.mapRT);
+            }
+            // çerçeve halkası (yuvarlak)
+            DrawRing(mr.center, ms / 2f, new Color(1f, 1f, 1f, 0.85f));
+            Vector2 c = mr.center;
+            // hedef yönü
             Vector3? target = null; Color tc = Color.green;
             if (g.race.Active) { target = g.race.NextCheckpoint; tc = Orange; }
             else if (g.delivery.Active) { target = g.delivery.target; tc = Blue; }
@@ -286,17 +430,40 @@ namespace MostWanted
                 Vector3 d = p.transform.InverseTransformDirection(target.Value - p.transform.position);
                 Vector2 dir = new Vector2(d.x, -d.z);
                 float half = ms / 2f;
-                float worldHalf = g.mapCam.orthographicSize;
-                Vector2 pos = new Vector2(half, half) + dir / worldHalf * half;
-                pos.x = Mathf.Clamp(pos.x, 8, ms - 8); pos.y = Mathf.Clamp(pos.y, 8, ms - 8);
+                Vector2 pos = dir / Mathf.Max(1f, g.mapCam.orthographicSize) * half;
+                if (pos.magnitude > half - 10f) pos = pos.normalized * (half - 10f);
+                pos += c;
                 Rect(new Rect(pos.x - 7, pos.y - 7, 14, 14), tc);
+                Shadow(new Rect(mr.x, mr.y - 28, ms, 28), Mathf.RoundToInt(U.FlatDist(p.transform.position, target.Value)) + " m", Align(small, TextAnchor.MiddleCenter));
             }
-            // kuzey göstergesi
+            // kuzey göstergesi (araç yönü yukarı)
             float yaw = p.transform.eulerAngles.y * Mathf.Deg2Rad;
-            Vector2 n = new Vector2(ms / 2f - Mathf.Sin(yaw) * (ms / 2f - 16f), ms / 2f - Mathf.Cos(yaw) * (ms / 2f - 16f));
-            Shadow(new Rect(n.x - 15, n.y - 15, 30, 30), "K", Align(small, TextAnchor.MiddleCenter));
-            GUI.EndGroup();
-            if (target.HasValue) Shadow(new Rect(mr.x, mr.y - 28, ms, 28), Mathf.RoundToInt(U.FlatDist(p.transform.position, target.Value)) + " m", small);
+            Vector2 n = c + new Vector2(-Mathf.Sin(yaw), -Mathf.Cos(yaw)) * (ms / 2f - 14f);
+            Rect(new Rect(n.x - 12, n.y - 12, 24, 24), new Color(0.1f, 0.1f, 0.12f, 0.9f));
+            GUI.Label(new Rect(n.x - 12, n.y - 12, 24, 24), "K", lblSmall);
+        }
+
+        Texture2D ringTex;
+        void DrawRing(Vector2 c, float r, Color col)
+        {
+            if (ringTex == null)
+            {
+                const int S = 256;
+                ringTex = new Texture2D(S, S, TextureFormat.RGBA32, true);
+                var px = new Color[S * S];
+                for (int y = 0; y < S; y++)
+                    for (int x = 0; x < S; x++)
+                    {
+                        float dx = x + 0.5f - S / 2f, dy = y + 0.5f - S / 2f;
+                        float rr = Mathf.Sqrt(dx * dx + dy * dy);
+                        float a = Mathf.Clamp01(Mathf.Min(rr - (S / 2f - 4f) + 1f, (S / 2f - 0.5f) - rr + 1f));
+                        px[y * S + x] = new Color(1, 1, 1, a);
+                    }
+                ringTex.SetPixels(px); ringTex.Apply(true);
+            }
+            var old = GUI.color; GUI.color = col;
+            GUI.DrawTexture(new Rect(c.x - r - 2, c.y - r - 2, 2 * r + 4, 2 * r + 4), ringTex);
+            GUI.color = old;
         }
 
         // ------------------------------------------------------------------ menüler
@@ -537,7 +704,7 @@ namespace MostWanted
             StatRow("İvme", (tq / spec.massKg - 0.15f) / 0.35f);
             StatRow("Yol Tutuş", (grip - 0.8f) / 0.6f);
             StatRow("Nitro", (1f + 0.25f * t[5]) / 1.75f);
-            GUILayout.Label(Mathf.RoundToInt(top) + " km/sa  •  " + Mathf.RoundToInt(tq) + " Nm  •  " + spec.massKg + " kg  •  " + spec.redlineRpm + " rpm", small);
+            GUILayout.Label((spec.powerHp > 0 ? spec.powerHp + " hp  •  " : "") + Mathf.RoundToInt(tq) + " Nm  •  " + Mathf.RoundToInt(top) + " km/sa  •  " + spec.massKg + " kg  •  " + (spec.gears <= 1 ? "tek oran (elektrikli)" : spec.gears + " vites") + (spec.zeroTo100 > 0f ? "  •  0-100: " + spec.zeroTo100.ToString("0.0") + " sn" : ""), small);
             GUILayout.Space(6);
             if (!sv.owned)
             {
@@ -588,12 +755,40 @@ namespace MostWanted
                 if (sv.color >= 0 && GUILayout.Button("Fabrika rengine dön (ücretsiz)", btn)) { sv.color = -1; SaveSystem.Save(); g.Toast("Fabrika rengi — garajdan çıkınca uygulanır"); }
                 if (GUI.tooltip != "") GUILayout.Label(GUI.tooltip, small);
 
+                // Motor sesi (kozmetik)
+                GUILayout.BeginHorizontal();
+                string curEng = string.IsNullOrEmpty(sv.engineSound) ? "Orijinal" : EngineAudio.EngineNames[Mathf.Max(0, System.Array.IndexOf(EngineAudio.EngineTypes, sv.engineSound))];
+                GUILayout.Label("Motor Sesi: " + curEng + "  (" + U.Money(1000) + ")", small, GUILayout.Width(360));
+                GUI.enabled = d.money >= 1000;
+                if (GUILayout.Button("◀", btn, GUILayout.Width(50))) SwapEngine(g, spec, sv, -1);
+                if (GUILayout.Button("▶", btn, GUILayout.Width(50))) SwapEngine(g, spec, sv, 1);
+                GUI.enabled = true;
+                if (!string.IsNullOrEmpty(sv.engineSound) && GUILayout.Button("Orijinal", btn, GUILayout.Width(110))) { sv.engineSound = ""; SaveSystem.Save(); RefreshEngine(g, spec); }
+                GUILayout.EndHorizontal();
                 GUILayout.Label("Performans Paketleri", small);
                 for (int k = 0; k < Catalog.TuneCount; k++) TuneRow(g, spec, sv, k);
             }
             GUILayout.FlexibleSpace();
             if (GUILayout.Button("Garajdan Çık (E / Esc)", btn)) g.CloseMenu();
             GUILayout.EndArea();
+        }
+
+        void SwapEngine(Game g, CarEntry spec, CarSave sv, int dir)
+        {
+            var types = EngineAudio.EngineTypes;
+            int i = System.Array.IndexOf(types, sv.engineSound);
+            i = i < 0 ? (dir > 0 ? 0 : types.Length - 1) : (i + dir + types.Length) % types.Length;
+            sv.engineSound = types[i];
+            SaveSystem.Data.money -= 1000;
+            SaveSystem.Save();
+            g.Toast("Motor sesi: " + EngineAudio.EngineNames[i]);
+            RefreshEngine(g, spec);
+        }
+
+        void RefreshEngine(Game g, CarEntry spec)
+        {
+            // garajdaki araç seçiliyse anında duyulsun
+            if (spec.id == SaveSystem.Data.selected && g.playerDriver != null && g.playerDriver.engineAudio != null) g.playerDriver.engineAudio.Reconfigure();
         }
 
         void TuneRow(Game g, CarEntry spec, CarSave sv, int k)
@@ -611,6 +806,7 @@ namespace MostWanted
                 if (GUILayout.Button("Yükselt " + U.Money(cost), btn))
                 {
                     d.money -= cost; sv.tune[k]++; SaveSystem.Save();
+                    if (k == (int)Tune.Egzoz) RefreshEngine(g, spec);
                     g.Toast(Catalog.TuneNames[k] + " seviye " + sv.tune[k] + "!");
                 }
                 GUI.enabled = true;
