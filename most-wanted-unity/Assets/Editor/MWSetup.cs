@@ -43,6 +43,7 @@ namespace MostWanted.EditorTools
             {
                 if (QualitySettings.renderPipeline == null) QualitySettings.renderPipeline = current;
                 ConfigureForGRD(current);
+                EnsureRenderFeatures(current);
                 return;
             }
             if (!AssetDatabase.IsValidFolder("Assets/Settings")) AssetDatabase.CreateFolder("Assets", "Settings");
@@ -61,6 +62,7 @@ namespace MostWanted.EditorTools
             }
             GraphicsSettings.defaultRenderPipeline = asset;
             ConfigureForGRD(asset);
+            EnsureRenderFeatures(asset);
             int cur = QualitySettings.GetQualityLevel();
             for (int i = 0; i < QualitySettings.names.Length; i++)
             {
@@ -115,6 +117,65 @@ namespace MostWanted.EditorTools
                 AssetDatabase.SaveAssets();
             }
             catch (System.Exception e) { Debug.LogWarning("[MW] GRD ayarı yapılamadı: " + e.Message); }
+        }
+
+        // ------------------------------------------------------------------ Grafik (Render ajanı)
+        /// <summary>
+        /// Renderer verisine SSAO ve MW atmosfer (tam ekran yükseklik sisi + güneş huzmeleri) özelliklerini ekler (yoksa),
+        /// varsayılan gölge kaskad/bias ayarlarını yapar. Çalışma zamanında kalite ön ayarına göre RenderSetup açar/kapatır.
+        /// URP sürüm farklarına karşı yansıma ile.
+        /// </summary>
+        static void EnsureRenderFeatures(UniversalRenderPipelineAsset asset)
+        {
+            try
+            {
+                MostWanted.Render.RenderSetup.PipelineQuality(asset, 1);
+                EditorUtility.SetDirty(asset);
+                var atmMat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Resources/Render/MW_SkyAtmosphereMat.mat");
+                foreach (var rd in MostWanted.Render.RenderSetup.RendererDatas(asset))
+                {
+                    bool hasSsao = false, hasAtm = false;
+                    foreach (var f in rd.rendererFeatures)
+                    {
+                        if (f == null) continue;
+                        if (f.GetType().Name == "ScreenSpaceAmbientOcclusion") hasSsao = true;
+                        if (f.name == MostWanted.Render.RenderSetup.MWAtmosphereFeatureName) hasAtm = true;
+                    }
+                    if (!hasSsao) AddFeature(rd, "UnityEngine.Rendering.Universal.ScreenSpaceAmbientOcclusion", "SSAO", null);
+                    if (!hasAtm && atmMat != null)
+                        AddFeature(rd, "UnityEngine.Rendering.Universal.FullScreenPassRendererFeature", MostWanted.Render.RenderSetup.MWAtmosphereFeatureName, feat =>
+                        {
+                            MostWanted.Render.RR.Set(feat, "passMaterial", atmMat);
+                            MostWanted.Render.RR.Set(feat, "injectionPoint", "BeforeRenderingPostProcessing");
+                            MostWanted.Render.RR.Set(feat, "requirements", "Depth");
+                            MostWanted.Render.RR.Set(feat, "fetchColorBuffer", true);
+                            MostWanted.Render.RR.Set(feat, "bindDepthStencilAttachment", false);
+                            MostWanted.Render.RR.Set(feat, "passIndex", 0);
+                        });
+                }
+                AssetDatabase.SaveAssets();
+            }
+            catch (System.Exception e) { Debug.LogWarning("[MW] Renderer özellikleri eklenemedi: " + e.Message); }
+        }
+
+        static void AddFeature(ScriptableRendererData rd, string typeName, string name, System.Action<ScriptableRendererFeature> cfg)
+        {
+            var t = typeof(UniversalRendererData).Assembly.GetType(typeName);
+            if (t == null) { Debug.LogWarning("[MW] URP özelliği bulunamadı: " + typeName); return; }
+            var feat = ScriptableObject.CreateInstance(t) as ScriptableRendererFeature;
+            if (feat == null) return;
+            feat.name = name;
+            if (cfg != null) cfg(feat);
+            AssetDatabase.AddObjectToAsset(feat, rd);
+            string guid; long localId;
+            AssetDatabase.TryGetGUIDAndLocalFileIdentifier(feat, out guid, out localId);
+            rd.rendererFeatures.Add(feat);
+            var mapF = typeof(ScriptableRendererData).GetField("m_RendererFeatureMap", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var map = mapF != null ? mapF.GetValue(rd) as List<long> : null;
+            if (map != null) map.Add(localId);
+            rd.SetDirty();
+            EditorUtility.SetDirty(rd);
+            Debug.Log("[MW] URP renderer özelliği eklendi: " + name);
         }
 
         // ------------------------------------------------------------------ Arabalar

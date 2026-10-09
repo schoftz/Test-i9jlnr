@@ -38,10 +38,8 @@ namespace MostWanted
         public AudioDirector audioDirector;
         public string district = "";
         float districtTimer;
-        WhiteBalance whiteBalance;
-        SplitToning splitToning;
         public static readonly string[] AtmosphereNames = { "Most Wanted", "Normal", "Gün Batımı", "Gece" };
-        static readonly float[] AtmosphereTime = { 0.40f, 0.45f, 0.70f, 0.93f };
+        static readonly float[] AtmosphereTime = { 0.33f, 0.45f, 0.71f, 0.93f };
         float mapRenderTimer;
         public float dayTime = 0.36f;
         public float dayLength = 720f;
@@ -55,12 +53,6 @@ namespace MostWanted
         Material sky;
         AudioSource sfx;
         float envTimer, saveTimer;
-        Volume volume;
-        Bloom bloom;
-        ColorAdjustments colorAdj;
-        Vignette vignette;
-        ChromaticAberration chroma;
-        MotionBlur motionBlur;
         bool fogBackup;
         readonly List<PursuitBreaker> breakers = new List<PursuitBreaker>();
 
@@ -237,7 +229,8 @@ namespace MostWanted
             sun.intensity = 1.35f;
             RenderSettings.sun = sun;
 
-            var skyRes = Resources.Load<Material>("MW_Sky");
+            var skyRes = Resources.Load<Material>("Render/MW_SkyMat");   // MW/Sky (Render/RenderSetup ile eşleşen ufuk/sis)
+            if (skyRes == null || skyRes.shader == null || !skyRes.shader.isSupported) skyRes = Resources.Load<Material>("MW_Sky");
             Shader skyShader = skyRes != null ? skyRes.shader : Shader.Find("Skybox/Procedural");
             if (skyShader != null)
             {
@@ -298,28 +291,7 @@ namespace MostWanted
 
         void SetupPost()
         {
-            var vg = new GameObject("PostFX");
-            volume = vg.AddComponent<Volume>();
-            volume.isGlobal = true;
-            var prof = ScriptableObject.CreateInstance<VolumeProfile>();
-            volume.sharedProfile = prof;
-            bloom = prof.Add<Bloom>(true);
-            bloom.intensity.Override(0.35f);
-            bloom.threshold.Override(1.15f);
-            var tm = prof.Add<Tonemapping>(true);
-            tm.mode.Override(TonemappingMode.ACES);
-            colorAdj = prof.Add<ColorAdjustments>(true);
-            colorAdj.postExposure.Override(0.25f);
-            colorAdj.contrast.Override(8f);
-            colorAdj.saturation.Override(10f);
-            vignette = prof.Add<Vignette>(true);
-            vignette.intensity.Override(0.18f);
-            chroma = prof.Add<ChromaticAberration>(true);
-            chroma.intensity.Override(0f);
-            motionBlur = prof.Add<MotionBlur>(true);
-            motionBlur.intensity.Override(0f);
-            whiteBalance = prof.Add<WhiteBalance>(true);
-            splitToning = prof.Add<SplitToning>(true);
+            MostWanted.Render.RenderSetup.Create();   // Volume, post efektler, kalite (Scripts/Render/RenderSetup.cs)
         }
 
         public void ApplyQuality(int q)
@@ -340,9 +312,7 @@ namespace MostWanted
         /// <summary>Post efekt kalitesi: Düşük'te bloom/motion blur yok.</summary>
         public void SetPostQuality(int q)
         {
-            if (bloom != null) { bloom.active = q >= 1; bloom.threshold.value = 1.2f; }
-            if (motionBlur != null) motionBlur.active = q >= 1;
-            if (chroma != null) chroma.active = q >= 1;
+            if (MostWanted.Render.RenderSetup.I != null) MostWanted.Render.RenderSetup.I.ApplyQuality(q);
         }
 
         // ------------------------------------------------------------------ oyuncu
@@ -552,18 +522,7 @@ namespace MostWanted
             a = Mathf.Clamp(a, 0, 3);
             SaveSystem.Data.atmosphere = a;
             if (SaveSystem.Data.alwaysDay) dayTime = AtmosphereTime[a];
-            if (whiteBalance != null)
-            {
-                whiteBalance.temperature.Override(a == 0 ? 18f : a == 2 ? 25f : a == 3 ? -15f : 0f);
-                whiteBalance.tint.Override(a == 0 ? 6f : 0f);
-            }
-            if (splitToning != null)
-            {
-                splitToning.shadows.Override(a == 0 ? new Color(0.35f, 0.45f, 0.5f) : a == 3 ? new Color(0.2f, 0.3f, 0.6f) : new Color(0.5f, 0.5f, 0.5f));
-                splitToning.highlights.Override(a == 0 ? new Color(0.75f, 0.6f, 0.35f) : a == 2 ? new Color(0.8f, 0.5f, 0.3f) : new Color(0.5f, 0.5f, 0.5f));
-                splitToning.balance.Override(a == 0 ? 15f : 0f);
-            }
-            if (colorAdj != null) colorAdj.colorFilter.Override(a == 0 ? new Color(1f, 0.93f, 0.8f) : Color.white);
+            if (MostWanted.Render.RenderSetup.I != null) MostWanted.Render.RenderSetup.I.ApplyGrading(a);
             SaveSystem.Save();
         }
 
@@ -584,25 +543,7 @@ namespace MostWanted
                 float speed = Night > 0.5f ? 4f : 1f;
                 dayTime = Mathf.Repeat(dayTime + Time.deltaTime / dayLength * speed, 1f);
             }
-            float sunAngle = (dayTime - 0.25f) * 360f;
-            float elev = Mathf.Sin(sunAngle * Mathf.Deg2Rad);
-            float day = Mathf.Clamp01((elev + 0.08f) / 0.3f);
-            Night = 1f - day;
-            if (elev > -0.05f)
-            {
-                sun.transform.rotation = Quaternion.Euler(sunAngle, -35f, 0f);
-                sun.intensity = Mathf.Lerp(0.15f, 1.35f, day);
-                sun.color = Color.Lerp(new Color(1f, 0.6f, 0.38f), new Color(1f, 0.96f, 0.9f), Mathf.Clamp01(elev * 3f));
-            }
-            else
-            {
-                sun.transform.rotation = Quaternion.Euler(sunAngle - 180f, -35f, 0f);
-                sun.intensity = 0.25f;
-                sun.color = new Color(0.6f, 0.7f, 1f);
-            }
-            RenderSettings.fogColor = Color.Lerp(new Color(0.06f, 0.07f, 0.12f), new Color(0.72f, 0.8f, 0.9f), day);
-            if (sky != null && sky.HasProperty("_Exposure")) sky.SetFloat("_Exposure", Mathf.Lerp(0.25f, 1.15f, day));
-            RenderSettings.ambientIntensity = Mathf.Lerp(0.6f, 1f, day);
+            if (MostWanted.Render.RenderSetup.I != null) Night = MostWanted.Render.RenderSetup.I.UpdateSun(sun, sky, dayTime);   // ışık/gökyüzü/sis: Render/RenderSetup.cs
 
             envTimer -= Time.unscaledDeltaTime;
             if (envTimer <= 0f)
@@ -620,13 +561,8 @@ namespace MostWanted
 
         void UpdatePostFx()
         {
-            if (colorAdj == null || player == null) return;
-            bool sb = playerDriver != null && playerDriver.speedbreakerOn;
-            float kmh = player.SpeedKmh;
-            colorAdj.saturation.value = Mathf.Lerp(colorAdj.saturation.value, sb ? -45f : 10f, Time.unscaledDeltaTime * 5f);
-            vignette.intensity.value = Mathf.Lerp(vignette.intensity.value, sb ? 0.45f : (player.nitroActive ? 0.3f : 0.18f), Time.unscaledDeltaTime * 5f);
-            chroma.intensity.value = Mathf.Lerp(chroma.intensity.value, player.nitroActive ? 0.6f : 0f, Time.unscaledDeltaTime * 4f);
-            motionBlur.intensity.value = Mathf.Clamp01((kmh - 120f) / 200f) * 0.35f + (player.nitroActive ? 0.15f : 0f);
+            if (MostWanted.Render.RenderSetup.I != null && player != null)
+                MostWanted.Render.RenderSetup.I.UpdatePostFx(player.SpeedKmh, player.nitroActive, playerDriver != null && playerDriver.speedbreakerOn);
         }
 
         void UpdateMapCams()

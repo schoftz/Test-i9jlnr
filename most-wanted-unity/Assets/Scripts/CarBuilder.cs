@@ -36,6 +36,7 @@ namespace MostWanted
             if (wi == null) wi = ProceduralBody(def, vis, ref body, paintMats, brakeMats, headMats);
 
             if (paint.HasValue) foreach (var m in paintMats) U.ApplyPaint(m, paint.Value);
+            MostWanted.Render.CarLook.Apply(vis, paintMats, body);   // grafik: boya/cam/lastik shader + temas gölgesi
 
             // ---- Fizik ----
             var rb = go.AddComponent<Rigidbody>();
@@ -591,6 +592,7 @@ namespace MostWanted
                 wi = ProceduralBody(def, vis, ref body, pm, bm, hm);
             }
             if (paint.HasValue) foreach (var m in pm) U.ApplyPaint(m, paint.Value);
+            MostWanted.Render.CarLook.Apply(vis, pm, body);   // grafik: vitrin aracı da aynı malzemeler
             foreach (var m in bm) U.SetEmission(m, new Color(1f, 0.05f, 0.03f) * 0.6f);
             foreach (var m in hm) U.SetEmission(m, new Color(2.5f, 2.4f, 2.1f));
             // tekerlek altları tablaya otursun
