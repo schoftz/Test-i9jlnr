@@ -80,7 +80,7 @@ namespace MostWanted
         int frame;
         protected override void Think()
         {
-            if (GetType() == typeof(TrafficDriver) && ((++frame + GetInstanceID()) & 1) == 0) return; // kademeli YZ
+            if (GetType() == typeof(TrafficDriver) && ((++frame + GetHashCode()) & 1) == 0) return; // kademeli YZ
             Vector3 tgt = LaneTarget();
             AdvanceIfReached(tgt);
             tgt = LaneTarget();
