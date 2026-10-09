@@ -388,7 +388,6 @@ namespace MostWanted
                     }
                 }
                 e.idx++;
-                if (e == playerEntry) Game.I.Beep(false);
                 if (circuit)
                 {
                     if (e.idx >= r.Count) { e.idx = 0; }
