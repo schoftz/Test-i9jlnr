@@ -717,6 +717,19 @@ namespace MostWanted
             // oyuncu trafik aracına sürterse/çarparsa savrulmasın: trafik aracı itilir, oyuncu yönünü korur (NFS tarzı)
             if (isPlayer && c.rigidbody != null && hasLastVel && c.rigidbody.GetComponent<TrafficDriver>() != null)
             {
+                // "hayalet" trafik: ekranda çizilmeyen (görünmez) bir trafik aracıyla çarpışma olmaz — iki araç birbirinin içinden geçer
+                bool seen = false;
+                foreach (var r in c.rigidbody.GetComponentsInChildren<Renderer>())
+                    if (r.enabled && r.isVisible && !(r is ParticleSystemRenderer)) { seen = true; break; }
+                if (!seen)
+                {
+                    foreach (var oc in c.rigidbody.GetComponentsInChildren<Collider>())
+                        foreach (var mc in GetComponentsInChildren<Collider>()) Physics.IgnoreCollision(oc, mc);
+                    U.SetVel(rb, lastVel);
+                    Vector3 av1 = rb.angularVelocity; rb.angularVelocity = new Vector3(0f, av1.y, 0f);
+                    Debug.LogWarning("[MW] Görünmez trafik aracıyla çarpışma yok sayıldı: " + c.rigidbody.name + " konum=" + c.rigidbody.position.ToString("F0") + " kinematik=" + c.rigidbody.isKinematic);
+                    return;
+                }
                 Vector3 lv0 = new Vector3(lastVel.x, Mathf.Min(lastVel.y, 0f), lastVel.z);
                 float headOn = Vector3.Dot(lv0.normalized, -c.GetContact(0).normal);   // 1 = tam önden
                 U.SetVel(rb, lv0 * Mathf.Lerp(0.92f, 0.6f, Mathf.Clamp01(headOn)));
