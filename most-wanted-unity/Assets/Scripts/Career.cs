@@ -98,8 +98,11 @@ namespace MostWanted
         // ---- Serbest sürüş drift puanı: açı × hız × süre × çarpan; zincir: drift bitince 1.5 sn içinde yenisi başlarsa sürer ----
         public float driftMult = 1f, driftChain;   // driftChain: 0..1 (zincir süresi göstergesi)
         float driftHold;
+        /// <summary>Serbest sürüş drift puanlaması kapalı (kullanıcı isteği).</summary>
+        public const bool DriftScoringEnabled = false;
         public void DriftTick(float angle, float kmh, float dt)
         {
+            if (!DriftScoringEnabled) return;
             if (angle > 12f && kmh > 40f)
             {
                 driftIdle = 0f;
@@ -111,11 +114,11 @@ namespace MostWanted
         /// <summary>Çarpışma: zincir kopar, puan kaybolur.</summary>
         public void DriftCrash()
         {
-            if (driftScore <= 0f) return;
+            if (!DriftScoringEnabled || driftScore <= 0f) return;
             Game.I.Toast("Drift zinciri koptu! (" + Mathf.RoundToInt(driftScore) + " puan kayıp)");
             driftScore = 0f; driftShow = 0f; driftMult = 1f; driftHold = 0f; driftIdle = 0f;
         }
-        public void AddDrift(float pts) { driftScore += pts; driftIdle = 0f; }
+        public void AddDrift(float pts) { if (!DriftScoringEnabled) return; driftScore += pts; driftIdle = 0f; }
 
         void Award(string id)
         {
