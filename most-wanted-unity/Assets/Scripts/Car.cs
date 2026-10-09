@@ -19,7 +19,8 @@ namespace MostWanted
         // ---- Tanım ----
         [System.NonSerialized] public CarEntry def;
         public int[] tune = new int[Catalog.TuneCount];
-        public float peakTorque, redline, topSpeed, finalDrive, dragK, grip = 1f, brakeTorque, downforceK, maxSteer = 32f;
+        public float peakTorque, redline, topSpeed, finalDrive, dragK, grip = 1f, brakeTorque, downforceK, maxSteer = 38f;
+        public float steerSens = 1f;   // oyuncu: direksiyon hassasiyeti (0.6–1.6)
         public float nitroCap = 1f, nitroPower = 1f, shiftTime = 0.28f, antiRoll, wheelRadius = 0.34f, wheelBase = 2.6f;
         public int drive = 1;
         [System.NonSerialized] public float[] ratios = CarMath.MakeRatios(6);
@@ -60,7 +61,6 @@ namespace MostWanted
         float curSteer, uprightTimer, shiftTimer, limiterT;
         Vector3 lastVel; bool hasLastVel; int burstCount;
         float sinceShift = 1f;
-        float[] sideStiff = { 1.4f, 1.4f, 1.35f, 1.35f };
         float handbrakeBlend;
 
         public bool TiresBlown { get { return spikeTimer > 0f; } }
@@ -133,12 +133,12 @@ namespace MostWanted
             // PhysX itme patlaması koruması: tek adımda anormal hız artışı/fırlama → geri al
             if (hasLastVel && !locked)
             {
-                bool burst = v.magnitude - lastVel.magnitude > 15f || v.y - lastVel.y > 10f || rb.angularVelocity.magnitude > 12f;
+                bool burst = v.magnitude - lastVel.magnitude > 15f || v.y - lastVel.y > 10f || Mathf.Abs(rb.angularVelocity.x) + Mathf.Abs(rb.angularVelocity.z) > 10f;
                 if (burst)
                 {
                     v = new Vector3(lastVel.x, Mathf.Min(lastVel.y, 0f), lastVel.z);
                     U.SetVel(rb, v);
-                    rb.angularVelocity = Vector3.ClampMagnitude(rb.angularVelocity, 2f);
+                    Vector3 av0 = rb.angularVelocity; rb.angularVelocity = new Vector3(Mathf.Clamp(av0.x, -1f, 1f), av0.y, Mathf.Clamp(av0.z, -1f, 1f));   // savrulmaya dokunma
                     burstCount++;
                     if (burstCount < 5) Debug.LogWarning("[MW] Fizik patlaması engellendi: " + name);
                 }
@@ -164,14 +164,14 @@ namespace MostWanted
             driftAmount = kmh > 40f ? Mathf.Abs(slipAngle) : 0f;
 
             // ---- Direksiyon ----
-            float limit = CarMath.SteerLimit(kmh, maxSteer) * steerBoost;
+            float limit = Mathf.Min(maxSteer * 1.15f, CarMath.SteerLimit(kmh, maxSteer) * steerBoost * steerSens);
             if (handbrake) limit = Mathf.Max(limit, maxSteer * 0.6f);
             float target = steer * limit;
             // karşı direksiyon yardımı
             // karşı direksiyon: sadece gerçek savrulmada (hızlıyken, kayma > 8°) — düşük hızda dönüşü engellemesin
             if (kmh > 25f && Mathf.Abs(slipAngle) > 8f) target += Mathf.Clamp((slipAngle - Mathf.Sign(slipAngle) * 8f) * 0.5f, -maxSteer * 0.5f, maxSteer * 0.5f);
             target = Mathf.Clamp(target, -maxSteer, maxSteer);
-            curSteer = Mathf.MoveTowards(curSteer, target, (90f + kmh * 0.4f) * dt);
+            curSteer = Mathf.MoveTowards(curSteer, target, CarMath.SteerRate(Mathf.Abs(target) < Mathf.Abs(curSteer)) * dt);
             wheels[0].steerAngle = curSteer;
             wheels[1].steerAngle = curSteer;
 
@@ -254,7 +254,7 @@ namespace MostWanted
             float g = grip * gripBoost * (TiresBlown ? 0.5f : 1f);
             for (int i = 0; i < 4; i++)
             {
-                float side = sideStiff[i] * g;
+                float side = CarMath.SideStiffness(i < 2, kmh) * g;
                 if (i >= 2) side *= Mathf.Lerp(1f, 0.42f, handbrakeBlend);
                 WheelHit hit;
                 if (wheels[i].GetGroundHit(out hit))
@@ -285,14 +285,11 @@ namespace MostWanted
                 // el freninde dönüş yardımı
                 if (handbrake && kmh > 25f) rb.AddTorque(Vector3.up * steer * rb.mass * 1.4f);
 
-                // savrulma kararlılık yardımı (el freni yokken aşırı dönüşü sönümle)
-                if (!handbrake && kmh > 35f)
+                // arcade dönüş yardımı: girdi varken dönüşe yardım eder, girdi yokken aşırı savrulmayı sönümler
+                if (!handbrake)
                 {
-                    float desiredYaw = fwd * Mathf.Tan(curSteer * Mathf.Deg2Rad) / wheelBase;
-                    float yaw = rb.angularVelocity.y;
-                    float excess = yaw - desiredYaw;
-                    if (Mathf.Abs(excess) > 0.25f)
-                        rb.AddTorque(Vector3.up * -excess * rb.inertiaTensor.y * stabilityAssist * 4f);
+                    float tq = CarMath.YawAssistTorque(fwd, curSteer, rb.angularVelocity.y, wheelBase, rb.inertiaTensor.y, steer, 1.3f * g);
+                    if (tq != 0f) rb.AddTorque(Vector3.up * tq * (stabilityAssist / 0.45f));
                 }
             }
             else

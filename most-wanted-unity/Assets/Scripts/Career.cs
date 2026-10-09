@@ -13,11 +13,11 @@ namespace MostWanted
 
         public static readonly Rival[] Rivals =
         {
-            new Rival { rank = 5, name = "Kobra",  races = 2,  bounty = 10000,  milestones = 1, skill = 0.92f, raceIndex = 0, prize = 50000 },
-            new Rival { rank = 4, name = "Gölge",  races = 4,  bounty = 30000,  milestones = 2, skill = 0.96f, raceIndex = 1, prize = 100000 },
-            new Rival { rank = 3, name = "Baron",  races = 6,  bounty = 70000,  milestones = 3, skill = 1.0f,  raceIndex = 6, prize = 175000 },
-            new Rival { rank = 2, name = "Duman",  races = 8,  bounty = 130000, milestones = 5, skill = 1.04f, raceIndex = 3, prize = 275000 },
-            new Rival { rank = 1, name = "Kral",   races = 10, bounty = 250000, milestones = 7, skill = 1.08f, raceIndex = 2, prize = 500000 },
+            new Rival { rank = 5, name = "Kobra",  races = 2,  bounty = 10000,  milestones = 1, skill = 0.92f, raceIndex = 0, prize = 20000 },
+            new Rival { rank = 4, name = "Gölge",  races = 4,  bounty = 30000,  milestones = 2, skill = 0.96f, raceIndex = 1, prize = 35000 },
+            new Rival { rank = 3, name = "Baron",  races = 6,  bounty = 70000,  milestones = 3, skill = 1.0f,  raceIndex = 6, prize = 50000 },
+            new Rival { rank = 2, name = "Duman",  races = 8,  bounty = 130000, milestones = 5, skill = 1.04f, raceIndex = 3, prize = 80000 },
+            new Rival { rank = 1, name = "Kral",   races = 10, bounty = 250000, milestones = 7, skill = 1.08f, raceIndex = 2, prize = 120000 },
         };
 
         public class Milestone { public string id, text; }

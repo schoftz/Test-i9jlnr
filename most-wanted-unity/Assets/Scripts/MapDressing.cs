@@ -593,13 +593,13 @@ namespace MostWanted
             g.Link(prev, eastNode); hwNodes.Add(eastNode);
 
             // otoyol yarışları
-            var sprint = new RaceDef { name = "Otoyol Sprinti", type = RaceType.Sprint, prize = 21000, route = w.RouteFromNodes(hwNodes, false) };
+            var sprint = new RaceDef { name = "Otoyol Sprinti", type = RaceType.Sprint, prize = 5200, route = w.RouteFromNodes(hwNodes, false) };
             w.races.Add(sprint);
             var loop = new List<int>(hwNodes);
             var back = g.Path(eastNode, southNode);
             for (int i = 1; i < back.Count - 1; i++) loop.Add(back[i]);
-            w.races.Add(new RaceDef { name = "Otoyol Turu", type = RaceType.Circuit, laps = 1, prize = 36000, route = w.RouteFromNodes(loop, true) });
-            var trap = new RaceDef { name = "Köprü Radarı", type = RaceType.Speedtrap, prize = 24000, route = w.RouteFromNodes(hwNodes, false) };
+            w.races.Add(new RaceDef { name = "Otoyol Turu", type = RaceType.Circuit, laps = 1, prize = 9000, route = w.RouteFromNodes(loop, true) });
+            var trap = new RaceDef { name = "Köprü Radarı", type = RaceType.Speedtrap, prize = 6000, route = w.RouteFromNodes(hwNodes, false) };
             trap.special.Add(hwNodes.Count / 4); trap.special.Add(hwNodes.Count / 2); trap.special.Add(3 * hwNodes.Count / 4);
             w.races.Add(trap);
         }

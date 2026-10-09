@@ -125,19 +125,19 @@ namespace MostWanted.EditorTools
         }
 
         // InvoGames paketi: FBX kaynak yollarından (D:\\Cars\\<marka>\\...) çıkarılan gerçek modeller ve gerçek dünya verileri.
-        // Fiyatlar gerçek piyasa fiyatlarıyla orantılı (₺ ≈ $). Tork/devir/vites/ağırlık üreticiden; 0-100 bilgi amaçlı.
+        // Fiyatlar oyun içi ilerleme eğrisine göre (performans kademesi), README'deki tabloya bak. Tork/devir/vites/ağırlık üreticiden; 0-100 bilgi amaçlı.
         static readonly Dictionary<string, Preset> Presets = new Dictionary<string, Preset>
         {
             { "car 3",  new Preset { name = "Mini John Cooper Works",        price = 0,       drive = 0, gears = 8,  hp = 231,  mass = 1300, torque = 320,  redline = 6500,  top = 246, zero100 = 6.1f, grip = 1.00f, down = 0.8f, length = 3.9f,  traffic = true,  eng = "I4",  turbo = true, turboSize = 1, color = new Color(0.8f,0.05f,0.05f) } },
-            { "car 1",  new Preset { name = "Dodge Challenger SRT Hellcat",  price = 75000,   drive = 1, gears = 8,  hp = 717,  mass = 1950, torque = 889,  redline = 6200,  top = 315, zero100 = 3.6f, grip = 1.15f, down = 0.8f, length = 5.0f,  traffic = true,  eng = "V8",  sc = true, police = "patrol", color = new Color(0.05f,0.05f,0.06f) } },
-            { "car 7",  new Preset { name = "Ford F-150 Raptor",             price = 80000,   drive = 2, gears = 10, hp = 450,  mass = 2600, torque = 691,  redline = 6000,  top = 180, zero100 = 5.5f, grip = 0.95f, down = 0.5f, length = 5.9f,  traffic = true,  eng = "V6",  turbo = true, turboSize = 1, color = new Color(0.55f,0.57f,0.6f) } },
-            { "car 10", new Preset { name = "BMW M4 Competition (G82)",      price = 85000,   drive = 1, gears = 8,  hp = 510,  mass = 1725, torque = 650,  redline = 7200,  top = 290, zero100 = 3.9f, grip = 1.12f, down = 1.0f, length = 4.8f,  traffic = true,  eng = "I6",  turbo = true, turboSize = 1, police = "undercover", color = new Color(0.08f,0.2f,0.75f) } },
-            { "car 9",  new Preset { name = "Tesla Cybertruck (Cyberbeast)", price = 100000,  drive = 2, gears = 1,  hp = 845,  mass = 3100, torque = 1500, redline = 16000, top = 209, zero100 = 2.7f, grip = 1.05f, down = 0.6f, length = 5.7f,  traffic = true,  eng = "EV",  police = "suv", color = new Color(0.7f,0.72f,0.74f) } },
-            { "car 5",  new Preset { name = "Nissan GT-R (R35)",             price = 120000,  drive = 2, gears = 6,  hp = 565,  mass = 1752, torque = 633,  redline = 7100,  top = 315, zero100 = 2.9f, grip = 1.18f, down = 1.2f, length = 4.7f,  traffic = false, eng = "V6",  turbo = true, turboSize = 1, color = new Color(0.9f,0.9f,0.92f) } },
-            { "car 6",  new Preset { name = "Toyota Supra MK4 (A80)",        price = 130000,  drive = 1, gears = 6,  hp = 330,  mass = 1510, torque = 441,  redline = 6800,  top = 285, zero100 = 4.6f, grip = 1.08f, down = 1.0f, length = 4.5f,  traffic = false, eng = "I6",  turbo = true, turboSize = 2, color = new Color(1f,0.4f,0f) } },
-            { "car 4",  new Preset { name = "Porsche 911 Turbo S (992)",     price = 230000,  drive = 2, gears = 8,  hp = 650,  mass = 1640, torque = 800,  redline = 7200,  top = 330, zero100 = 2.7f, grip = 1.22f, down = 1.3f, length = 4.55f, traffic = false, eng = "F6",  turbo = true, turboSize = 1, color = new Color(0.75f,0.04f,0.04f) } },
-            { "car 8",  new Preset { name = "Nissan Skyline GT-R (R34)",     price = 250000,  drive = 2, gears = 6,  hp = 330,  mass = 1560, torque = 360,  redline = 8000,  top = 265, zero100 = 4.9f, grip = 0.98f, down = 1.1f, length = 4.6f,  traffic = false, eng = "I6",  turbo = true, turboSize = 2, color = new Color(0.1f,0.3f,0.8f) } },
-            { "car 2",  new Preset { name = "Bugatti Chiron",                price = 3200000, drive = 2, gears = 7,  hp = 1500, mass = 1995, torque = 1600, redline = 6700,  top = 420, zero100 = 2.4f, grip = 1.12f, down = 1.6f, length = 4.55f, traffic = false, eng = "W16", turbo = true, turboSize = 3, color = new Color(0.08f,0.15f,0.4f) } },
+            { "car 1",  new Preset { name = "Dodge Challenger SRT Hellcat",  price = 60000,   drive = 1, gears = 8,  hp = 717,  mass = 1950, torque = 889,  redline = 6200,  top = 315, zero100 = 3.6f, grip = 1.15f, down = 0.8f, length = 5.0f,  traffic = true,  eng = "V8",  sc = true, police = "patrol", color = new Color(0.05f,0.05f,0.06f) } },
+            { "car 7",  new Preset { name = "Ford F-150 Raptor",             price = 15000,   drive = 2, gears = 10, hp = 450,  mass = 2600, torque = 691,  redline = 6000,  top = 180, zero100 = 5.5f, grip = 0.95f, down = 0.5f, length = 5.9f,  traffic = true,  eng = "V6",  turbo = true, turboSize = 1, color = new Color(0.55f,0.57f,0.6f) } },
+            { "car 10", new Preset { name = "BMW M4 Competition (G82)",      price = 40000,   drive = 1, gears = 8,  hp = 510,  mass = 1725, torque = 650,  redline = 7200,  top = 290, zero100 = 3.9f, grip = 1.12f, down = 1.0f, length = 4.8f,  traffic = true,  eng = "I6",  turbo = true, turboSize = 1, police = "undercover", color = new Color(0.08f,0.2f,0.75f) } },
+            { "car 9",  new Preset { name = "Tesla Cybertruck (Cyberbeast)", price = 85000,  drive = 2, gears = 1,  hp = 845,  mass = 3100, torque = 1500, redline = 16000, top = 209, zero100 = 2.7f, grip = 1.05f, down = 0.6f, length = 5.7f,  traffic = true,  eng = "EV",  police = "suv", color = new Color(0.7f,0.72f,0.74f) } },
+            { "car 5",  new Preset { name = "Nissan GT-R (R35)",             price = 150000,  drive = 2, gears = 6,  hp = 565,  mass = 1752, torque = 633,  redline = 7100,  top = 315, zero100 = 2.9f, grip = 1.18f, down = 1.2f, length = 4.7f,  traffic = false, eng = "V6",  turbo = true, turboSize = 1, color = new Color(0.9f,0.9f,0.92f) } },
+            { "car 6",  new Preset { name = "Toyota Supra MK4 (A80)",        price = 25000,  drive = 1, gears = 6,  hp = 330,  mass = 1510, torque = 441,  redline = 6800,  top = 285, zero100 = 4.6f, grip = 1.08f, down = 1.0f, length = 4.5f,  traffic = false, eng = "I6",  turbo = true, turboSize = 2, color = new Color(1f,0.4f,0f) } },
+            { "car 4",  new Preset { name = "Porsche 911 Turbo S (992)",     price = 200000,  drive = 2, gears = 8,  hp = 650,  mass = 1640, torque = 800,  redline = 7200,  top = 330, zero100 = 2.7f, grip = 1.22f, down = 1.3f, length = 4.55f, traffic = false, eng = "F6",  turbo = true, turboSize = 1, color = new Color(0.75f,0.04f,0.04f) } },
+            { "car 8",  new Preset { name = "Nissan Skyline GT-R (R34)",     price = 115000,  drive = 2, gears = 6,  hp = 330,  mass = 1560, torque = 360,  redline = 8000,  top = 265, zero100 = 4.9f, grip = 0.98f, down = 1.1f, length = 4.6f,  traffic = false, eng = "I6",  turbo = true, turboSize = 2, color = new Color(0.1f,0.3f,0.8f) } },
+            { "car 2",  new Preset { name = "Bugatti Chiron",                price = 350000, drive = 2, gears = 7,  hp = 1500, mass = 1995, torque = 1600, redline = 6700,  top = 420, zero100 = 2.4f, grip = 1.12f, down = 1.6f, length = 4.55f, traffic = false, eng = "W16", turbo = true, turboSize = 3, color = new Color(0.08f,0.15f,0.4f) } },
         };
 
         static void ApplyPreset(MostWanted.CarEntry e, Preset pr)
@@ -232,7 +232,7 @@ namespace MostWanted.EditorTools
                 added++;
             }
             // ses ön ayarlarını güncelle (eski kayıtlar için bir kez)
-            if (reg.presetVersion < 4)
+            if (reg.presetVersion < 5)
             {
                 foreach (var e in reg.cars)
                 {
@@ -241,7 +241,7 @@ namespace MostWanted.EditorTools
                     Preset pr;
                     if (pth.Contains("invogames") && Presets.TryGetValue(System.IO.Path.GetFileNameWithoutExtension(pth), out pr)) ApplyPreset(e, pr);
                 }
-                reg.presetVersion = 4;
+                reg.presetVersion = 5;
                 Debug.Log("[MW] Araç kaydı gerçek modellere güncellendi (isim, fiyat, motor, şanzıman).");
                 created = true;
             }

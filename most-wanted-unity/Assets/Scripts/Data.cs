@@ -85,7 +85,8 @@ namespace MostWanted
 
         public static int TuneCost(CarEntry e, int level)
         {
-            return 1000 + (int)(e.price * 0.05f * (level + 1)) + level * 1500;
+            // araç kademesine göre: ucuz araçta ucuz, pahalıda pahalı (en az 10.000 fiyat varsayımı)
+            return 500 + (int)(Mathf.Max(e.price, 10000) * 0.05f * (level + 1));
         }
     }
 
@@ -126,7 +127,8 @@ namespace MostWanted
         public int atmosphere = 0;   // 0 Most Wanted, 1 Normal, 2 Gün batımı, 3 Gece
         public bool wet = false;
         public bool dressing = true;
-        public bool gpuResidentDrawer = false;  // Unity 6 GPU Resident Drawer (Keep All ayarı gerekir)
+        public bool gpuResidentDrawer = false;
+        public float steerSens = 1f;           // direksiyon hassasiyeti 0.6–1.6  // Unity 6 GPU Resident Drawer (Keep All ayarı gerekir)
         public float[] volumes = { 1f, 1f, 0.6f, 0.8f }; // Motor, Efekt, Müzik, Siren
     }
 

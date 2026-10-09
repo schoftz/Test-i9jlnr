@@ -100,6 +100,31 @@ Play'e bas. Oyun her şeyi (dünya, araçlar, polis, arayüz) çalışma anında
   8 performans paketi (Motor, Turbo, Şanzıman, Süspansiyon, Lastik, Nitro, Fren, **Egzoz** — egzoz sesi yükselir,
   daha çok patlama, vites atarken "BANG"; her biri 3 seviye). İlerleme PlayerPrefs'e JSON olarak kaydedilir.
 
+### Ekonomi (ilerleme eğrisi)
+| Kademe | Araç | Fiyat |
+|---|---|---|
+| Başlangıç | Mini John Cooper Works | ₺0 |
+| Giriş | Ford F-150 Raptor | ₺15.000 |
+| Giriş | Toyota Supra MK4 | ₺25.000 |
+| Orta | BMW M4 Competition | ₺40.000 |
+| Orta | Dodge Challenger Hellcat | ₺60.000 |
+| Yüksek | Tesla Cybertruck | ₺85.000 |
+| Yüksek | Nissan Skyline GT-R R34 | ₺115.000 |
+| Yüksek | Nissan GT-R R35 | ₺150.000 |
+| Süper | Porsche 911 Turbo S | ₺200.000 |
+| Zirve | Bugatti Chiron | ₺350.000 |
+
+Kazanç: yarış ₺2.200–7.500 (2.: %40, 3.: %14), teslimat ₺600–3.000, polisten kaçış ödülün yarısı nakit
+(tamamı kariyer ödülüne), kara liste ₺20.000 → ₺120.000 + rakibin arabası, kilometre taşı ₺2.500.
+Ortalama ~₺1.000–1.500/dk → bir sonraki araç yaklaşık 20–40 dk. Performans paketi fiyatı aracın kademesine göre
+(₺500 + fiyatın %5'i × seviye); satış %60. Başlangıç parası ₺12.000.
+
+### Direksiyon
+Hıza duyarlı açı: 38° (dur) → 16° (100 km/sa) → 9° (200 km/sa); tam kilit ~0.15 sn. Arcade dönüş yardımı girdi
+yönünde savrulma ekler (understeer'i giderir), girdi yokken savrulmayı sönümler. Düşük hızda ön tutuş ≥ arka, yüksek
+hızda arka artar (spin yok). Duraklat menüsünde **Direksiyon hassasiyeti** (0.6–1.6).
+`Tools/physics_sim/SteerSim.cs`: dinamik test (30 km/sa tam kilit yarıçapı, 100 km/sa yanal ivme).
+
 ---
 
 ## 3b. Harita süsleme (ithal şehirde, otomatik)
@@ -169,8 +194,8 @@ Paket araçları (gerçek modeller, FBX kaynak yollarından): **Mini John Cooper
 Challenger SRT Hellcat** (V8 + supercharger, polis devriyesi), **Ford F-150 Raptor** (EcoBoost V6), **BMW M4 Competition**
 (I6 twin-turbo, sivil polis), **Tesla Cybertruck** (elektrik, ağır polis), **Nissan GT-R R35** (V6 twin-turbo),
 **Toyota Supra MK4 A80** (2JZ I6, büyük turbo), **Porsche 911 Turbo S** (boxer 6 turbo), **Nissan Skyline GT-R R34**
-(RB26 I6 twin-turbo, koleksiyon fiyatı), **Bugatti Chiron** (W16 dört turbo, ₺3.200.000 — kara liste #1).
-Fiyatlar gerçek piyasa fiyatlarıyla orantılı; tork/ağırlık/vites sayısı/devir gerçek değerler.
+(RB26 I6 twin-turbo), **Bugatti Chiron** (W16 dört turbo — kara liste #1).
+Tork/ağırlık/vites sayısı/devir gerçek değerler; fiyatlar oyun içi ilerleme eğrisine göre (aşağıdaki tablo).
 `Tools/physics_sim/RealCarsSim.cs` gerçek ve oyun 0-100/azami hız değerlerini karşılaştırır.
 
 ### Prosedürel yedek (dosya yoksa)

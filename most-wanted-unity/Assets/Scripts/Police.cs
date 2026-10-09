@@ -216,8 +216,8 @@ namespace MostWanted
             d.bestBounty = Mathf.Max(d.bestBounty, reward);
             d.longestPursuit = Mathf.Max(d.longestPursuit, pursuitTime);
             if (heli != null && heliSeenOnce) d.heliEscapes++;
-            SaveSystem.AddMoney(reward);
-            Game.I.Toast("KAÇTIN! Ödül: " + U.Money(reward) + "  (" + Stars + " yıldız)");
+            SaveSystem.AddMoney(reward / 2);   // ödülün yarısı nakit, tamamı kariyer ödülü
+            Game.I.Toast("KAÇTIN! Ödül: " + U.Money(reward) + " (nakit " + U.Money(reward / 2) + ")" + "  (" + Stars + " yıldız)");
             Radio("Şüpheliyi kaybettik... Tüm birimler devriyeye dönsün.");
             Game.I.Beep(true);
             EndPursuit(true);

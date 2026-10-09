@@ -51,7 +51,8 @@ namespace MostWanted
             if (g != null && g.race.Counting && (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow))) th = 1f;
 
             float dtU = Time.unscaledDeltaTime;
-            steerSmooth = Mathf.MoveTowards(steerSmooth, st, dtU * (Mathf.Abs(st) > 0.01f ? 3.5f : 6f));
+            steerSmooth = Mathf.MoveTowards(steerSmooth, st, dtU * (Mathf.Abs(st) > Mathf.Abs(steerSmooth) ? 8f : 12f));
+            car.steerSens = SaveSystem.Data != null ? SaveSystem.Data.steerSens : 1f;
             car.throttle = th;
             car.manualGearbox = drag;
 

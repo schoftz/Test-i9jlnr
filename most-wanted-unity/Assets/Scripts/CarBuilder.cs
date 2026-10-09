@@ -72,7 +72,7 @@ namespace MostWanted
             car.wheelBase = Mathf.Max(1.8f, Mathf.Abs(wi[0].pos.z - wi[2].pos.z));
             if (role == CarRole.Player)
                 Debug.Log("[MW] " + def.displayName + ": ön teker z=" + wi[0].pos.z.ToString("0.00") + "/" + wi[1].pos.z.ToString("0.00") + ", arka z=" + wi[2].pos.z.ToString("0.00") + ", dingil mesafesi " + car.wheelBase.ToString("0.00") + " m — direksiyon OK");
-            car.stabilityAssist = role == CarRole.Player ? 0.45f : 0.8f;
+            car.stabilityAssist = role == CarRole.Player ? 0.45f : 0.6f;
             car.paintMats = paintMats; car.brakeMats = brakeMats; car.headMats = headMats;
 
             string[] wn = { "FL", "FR", "RL", "RR" };

@@ -533,6 +533,11 @@ namespace MostWanted
                 g.player.Teleport(g.world.garagePos + Vector3.up * 0.5f, g.world.garageRot);
                 g.rig.Snap();
             }
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Direksiyon hassasiyeti: " + d.steerSens.ToString("0.00"), small, GUILayout.Width(250));
+            float ns = GUILayout.HorizontalSlider(d.steerSens, 0.6f, 1.6f, GUILayout.Width(320));
+            if (Mathf.Abs(ns - d.steerSens) > 0.001f) d.steerSens = Mathf.Round(ns * 20f) / 20f;
+            GUILayout.EndHorizontal();
             for (int i = 0; i < 4; i++)
             {
                 GUILayout.BeginHorizontal();

@@ -86,15 +86,57 @@ namespace MostWanted
         /// <summary>Yuvarlanma direnci ivmesi (m/s², sabit).</summary>
         public const float RollingDecel = 0.15f;
 
-        /// <summary>Hıza duyarlı direksiyon: ~32° (dur) → ~7° (150 km/sa).</summary>
+        /// <summary>
+        /// Hıza duyarlı direksiyon (MW arcade): 38° (dur) → 16° (100 km/sa) → 9° (200 km/sa) → 7° (300).
+        /// maxSteer farklıysa oranlanır.
+        /// </summary>
         public static float SteerLimit(float kmh, float maxSteer)
         {
-            float t = kmh / 150f; if (t > 1f) t = 1f; if (t < 0f) t = 0f;
-            float s = t * t * (3f - 2f * t);
-            float lo = 7f * maxSteer / 32f;
-            float v = maxSteer + (lo - maxSteer) * s;
-            if (kmh > 150f) v = Math.Max(lo * 0.8f, lo - (kmh - 150f) * 0.01f);
-            return v;
+            float k = maxSteer / 38f;
+            float v;
+            if (kmh <= 100f) { float t = kmh / 100f; t = t * t * (3f - 2f * t); v = 38f + (16f - 38f) * t; }
+            else if (kmh <= 200f) v = 16f + (9f - 16f) * ((kmh - 100f) / 100f);
+            else v = Math.Max(7f, 9f - (kmh - 200f) * 0.02f);
+            return v * k;
+        }
+
+        /// <summary>
+        /// Yanal lastik sertliği: düşük hızda ön ≥ arka (keskin dönüş), yüksek hızda arka artar (kararlılık, spin yok).
+        /// </summary>
+        public static float SideStiffness(bool front, float kmh)
+        {
+            if (front) return 1.6f;
+            float t = (kmh - 50f) / 90f; if (t < 0f) t = 0f; if (t > 1f) t = 1f;
+            return 1.45f + (1.85f - 1.45f) * t;
+        }
+
+        /// <summary>Direksiyon dönüş hızı (°/sn): içeri ~0.15 sn'de tam kilit, geri dönüş daha hızlı.</summary>
+        public static float SteerRate(bool returning) { return returning ? 380f : 260f; }
+
+        /// <summary>
+        /// Arcade dönüş yardımı (savrulma momenti, N·m). Direksiyon girdisi varken araç hedef savrulma hızının
+        /// altındaysa (understeer) girdi yönünde moment EKLER; girdi yokken yalnızca aşırı savrulmayı sönümler.
+        /// Hedef = v·tan(δ)/L, tutuşla sınırlı (μg/v).
+        /// </summary>
+        public static float YawAssistTorque(float fwdSpeed, float steerAngleDeg, float yawRate, float wheelBase, float inertiaY, float steerInput, float mu)
+        {
+            float v = Math.Abs(fwdSpeed);
+            if (v < 1.5f) return 0f;
+            float target = fwdSpeed * (float)Math.Tan(steerAngleDeg * Math.PI / 180.0) / Math.Max(1.5f, wheelBase);
+            float cap = mu * Gravity / Math.Max(v, 3f);
+            if (target > cap) target = cap; if (target < -cap) target = -cap;
+            if (Math.Abs(steerInput) > 0.1f)
+            {
+                float sgn = Math.Sign(target);
+                if (sgn != 0 && yawRate * sgn < target * sgn)
+                {
+                    float kIn = 3.2f * Math.Min(1f, v / 8f);
+                    return (target - yawRate) * inertiaY * kIn;
+                }
+                return 0f;
+            }
+            float ex = yawRate - target;
+            return Math.Abs(ex) > 0.15f ? -ex * inertiaY * 2.5f : 0f;
         }
 
         /// <summary>
