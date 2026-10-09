@@ -564,22 +564,29 @@ namespace MostWanted
                 GUI.enabled = true;
                 GUILayout.EndHorizontal();
 
-                GUILayout.Label("Boya (" + U.Money(Catalog.PaintCost) + ")", small);
-                GUILayout.BeginHorizontal();
-                for (int i = 0; i < Catalog.Paints.Length; i++)
+                GUILayout.Label("Boya (" + U.Money(Catalog.PaintCost) + ")" + (sv.color >= 0 && sv.color < Catalog.Paints.Length ? "  —  " + Catalog.Paints[sv.color].name : "  —  Fabrika"), small);
+                for (int row = 0; row < 2; row++)
                 {
-                    var old = GUI.backgroundColor;
-                    GUI.backgroundColor = Catalog.Paints[i];
-                    GUI.enabled = d.money >= Catalog.PaintCost && sv.color != i;
-                    if (GUILayout.Button(new GUIContent(sv.color == i ? "✓" : "", Catalog.PaintNames[i]), btn, GUILayout.Width(48)))
+                    GUILayout.BeginHorizontal();
+                    int per = (Catalog.Paints.Length + 1) / 2;
+                    for (int i = row * per; i < Mathf.Min(Catalog.Paints.Length, (row + 1) * per); i++)
                     {
-                        d.money -= Catalog.PaintCost; sv.color = i; SaveSystem.Save();
-                        g.Toast("Boya: " + Catalog.PaintNames[i]);
+                        var old = GUI.backgroundColor;
+                        GUI.backgroundColor = Catalog.Paints[i].color;
+                        GUI.enabled = d.money >= Catalog.PaintCost && sv.color != i;
+                        if (GUILayout.Button(new GUIContent(sv.color == i ? "✓" : "", Catalog.Paints[i].name), btn, GUILayout.Width(44)))
+                        {
+                            d.money -= Catalog.PaintCost; sv.color = i; SaveSystem.Save();
+                            g.Toast("Boya: " + Catalog.Paints[i].name);
+                            if (spec.id == d.selected && g.player != null) g.player.SetPaint(Catalog.Paints[i]); // canlı önizleme
+                        }
+                        GUI.enabled = true;
+                        GUI.backgroundColor = old;
                     }
-                    GUI.enabled = true;
-                    GUI.backgroundColor = old;
+                    GUILayout.EndHorizontal();
                 }
-                GUILayout.EndHorizontal();
+                if (sv.color >= 0 && GUILayout.Button("Fabrika rengine dön (ücretsiz)", btn)) { sv.color = -1; SaveSystem.Save(); g.Toast("Fabrika rengi — garajdan çıkınca uygulanır"); }
+                if (GUI.tooltip != "") GUILayout.Label(GUI.tooltip, small);
 
                 GUILayout.Label("Performans Paketleri", small);
                 for (int k = 0; k < Catalog.TuneCount; k++) TuneRow(g, spec, sv, k);

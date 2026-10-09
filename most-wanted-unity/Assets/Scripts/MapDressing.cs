@@ -1098,7 +1098,7 @@ namespace MostWanted
                 {
                     if (parkPool.Count >= want) break;
                     var def = Catalog.Traffic[rnd.Next(Catalog.Traffic.Count)];
-                    var col = Catalog.Paints[rnd.Next(Catalog.Paints.Length)] * 0.8f; col.a = 1f;
+                    var col = Catalog.Paints[rnd.Next(Catalog.Paints.Length)];
                     var go = CarFactory.BuildStatic(def, col);
                     go.transform.SetParent(root, true);
                     parkPool.Add(go); parkAssigned.Add(-1);

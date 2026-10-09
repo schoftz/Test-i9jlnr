@@ -264,7 +264,7 @@ namespace MostWanted
         {
             var list = Catalog.Traffic;
             var def = list[Random.Range(0, list.Count)];
-            Color col = Catalog.Paints[Random.Range(0, Catalog.Paints.Length)] * Random.Range(0.6f, 1f); col.a = 1f;
+            var col = Catalog.Paints[Random.Range(0, Catalog.Paints.Length)];
             var car = CarFactory.Build(def, col, new Vector3(0, -200, 0), Quaternion.identity, CarRole.Traffic, null, "Trafik");
             // trafik: sakin sürüş
             car.peakTorque *= 0.6f;

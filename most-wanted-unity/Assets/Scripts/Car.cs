@@ -378,9 +378,9 @@ namespace MostWanted
             if (health <= 0f) { health = 0f; disabled = true; }
         }
 
-        public void SetPaint(Color c)
+        public void SetPaint(PaintDef p)
         {
-            foreach (var m in paintMats) U.SetColor(m, c);
+            foreach (var m in paintMats) U.ApplyPaint(m, p);
         }
 
         public void SetHeadlights(bool on)

@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace MostWanted
 {
-    public enum Tune { Motor, Turbo, Sanziman, Suspansiyon, Lastik, Nitro, Fren }
+    public enum Tune { Motor, Turbo, Sanziman, Suspansiyon, Lastik, Nitro, Fren, Egzoz }
 
     public static class Catalog
     {
@@ -13,18 +13,33 @@ namespace MostWanted
         public static readonly List<CarEntry> Traffic = new List<CarEntry>();
         public static CarEntry PolicePatrol, PoliceUndercover, PoliceSuv;
 
-        public static readonly string[] TuneNames = { "Motor", "Turbo", "Şanzıman", "Süspansiyon", "Lastikler", "Nitro", "Frenler" };
-        public const int TuneCount = 7;
+        public static readonly string[] TuneNames = { "Motor", "Turbo", "Şanzıman", "Süspansiyon", "Lastikler", "Nitro", "Frenler", "Egzoz" };
+        public const int TuneCount = 8;
         public const int MaxTune = 3;
         public const int PaintCost = 500;
 
-        public static readonly Color[] Paints =
+        /// <summary>Boya kataloğu: renk + metaliklik + parlaklık (mat, metalik, inci, şeker...).</summary>
+        public static readonly PaintDef[] Paints =
         {
-            new Color(0.9f,0.9f,0.9f), new Color(0.05f,0.05f,0.06f), new Color(0.75f,0.04f,0.04f), new Color(0.08f,0.2f,0.75f),
-            new Color(0.95f,0.7f,0.05f), new Color(0.1f,0.6f,0.2f), new Color(1f,0.4f,0f), new Color(0.5f,0.1f,0.65f),
-            new Color(0.55f,0.57f,0.6f), new Color(0.1f,0.75f,0.85f),
+            new PaintDef("İnci Beyazı",     new Color(0.93f, 0.92f, 0.88f), 0.35f, 0.88f),
+            new PaintDef("Parlak Siyah",    new Color(0.02f, 0.02f, 0.025f), 0.4f, 0.9f),
+            new PaintDef("Mat Siyah",       new Color(0.04f, 0.04f, 0.045f), 0.0f, 0.18f),
+            new PaintDef("Şeker Kırmızı",   new Color(0.62f, 0.02f, 0.03f), 0.75f, 0.9f),
+            new PaintDef("Yarış Kırmızısı", new Color(0.8f, 0.06f, 0.04f), 0.3f, 0.8f),
+            new PaintDef("MW Gümüş",        new Color(0.72f, 0.74f, 0.77f), 0.85f, 0.78f),
+            new PaintDef("MW Mavi",         new Color(0.06f, 0.2f, 0.62f), 0.7f, 0.82f),
+            new PaintDef("Gece Mavisi",     new Color(0.02f, 0.05f, 0.18f), 0.75f, 0.85f),
+            new PaintDef("Turkuaz",         new Color(0.05f, 0.62f, 0.7f), 0.6f, 0.8f),
+            new PaintDef("Limon Sarısı",    new Color(0.95f, 0.78f, 0.04f), 0.4f, 0.82f),
+            new PaintDef("Turuncu",         new Color(0.98f, 0.36f, 0.02f), 0.5f, 0.82f),
+            new PaintDef("Zehir Yeşili",    new Color(0.3f, 0.85f, 0.08f), 0.5f, 0.8f),
+            new PaintDef("Askeri Yeşil",    new Color(0.18f, 0.24f, 0.12f), 0.1f, 0.35f),
+            new PaintDef("Mor İnci",        new Color(0.36f, 0.06f, 0.5f), 0.8f, 0.86f),
+            new PaintDef("Pembe",           new Color(0.95f, 0.3f, 0.6f), 0.45f, 0.82f),
+            new PaintDef("Bronz",           new Color(0.45f, 0.27f, 0.12f), 0.9f, 0.7f),
+            new PaintDef("Altın",           new Color(0.85f, 0.65f, 0.25f), 0.95f, 0.8f),
+            new PaintDef("Mat Gri",         new Color(0.3f, 0.31f, 0.33f), 0.05f, 0.25f),
         };
-        public static readonly string[] PaintNames = { "Beyaz", "Siyah", "Kırmızı", "Mavi", "Sarı", "Yeşil", "Turuncu", "Mor", "Gümüş", "Turkuaz" };
 
         public static void Load()
         {
@@ -54,12 +69,12 @@ namespace MostWanted
         static void AddFallback()
         {
             // Araç paketi yoksa prosedürel gövdeli yedek araçlar
-            All.Add(new CarEntry { id = "p_hatch", displayName = "Sokak Hatch", price = 0, massKg = 1250, torqueNm = 280, redlineRpm = 6800, topSpeedKmh = 215, drive = 0, grip = 1f, length = 4.2f, defaultColor = Paints[0] });
-            All.Add(new CarEntry { id = "p_tuner", displayName = "Tuner S", price = 25000, massKg = 1350, torqueNm = 380, redlineRpm = 7800, topSpeedKmh = 245, drive = 2, grip = 1.05f, length = 4.4f, defaultColor = Paints[3] });
-            All.Add(new CarEntry { id = "p_muscle", displayName = "Muscle V8", price = 45000, massKg = 1600, torqueNm = 560, redlineRpm = 6500, topSpeedKmh = 260, drive = 1, grip = 0.97f, length = 4.8f, defaultColor = Paints[1], policeRole = "patrol" });
-            All.Add(new CarEntry { id = "p_gt", displayName = "Street GT", price = 80000, massKg = 1450, torqueNm = 520, redlineRpm = 8200, topSpeedKmh = 290, drive = 1, grip = 1.1f, length = 4.5f, defaultColor = Paints[4], policeRole = "undercover" });
-            All.Add(new CarEntry { id = "p_super", displayName = "Süper V10", price = 140000, massKg = 1550, torqueNm = 620, redlineRpm = 8700, topSpeedKmh = 320, drive = 2, grip = 1.18f, length = 4.5f, defaultColor = Paints[2] });
-            All.Add(new CarEntry { id = "p_suv", displayName = "Bulldog SUV", price = 38000, massKg = 2100, torqueNm = 620, redlineRpm = 6000, topSpeedKmh = 230, drive = 2, grip = 0.95f, length = 4.9f, defaultColor = Paints[8], policeRole = "suv" });
+            All.Add(new CarEntry { id = "p_hatch", displayName = "Sokak Hatch", price = 0, massKg = 1250, torqueNm = 280, redlineRpm = 6800, topSpeedKmh = 215, drive = 0, grip = 1f, length = 4.2f, defaultColor = Paints[0].color });
+            All.Add(new CarEntry { id = "p_tuner", displayName = "Tuner S", price = 25000, massKg = 1350, torqueNm = 380, redlineRpm = 7800, topSpeedKmh = 245, drive = 2, grip = 1.05f, length = 4.4f, defaultColor = Paints[3].color });
+            All.Add(new CarEntry { id = "p_muscle", displayName = "Muscle V8", price = 45000, massKg = 1600, torqueNm = 560, redlineRpm = 6500, topSpeedKmh = 260, drive = 1, grip = 0.97f, length = 4.8f, defaultColor = Paints[1].color, policeRole = "patrol" });
+            All.Add(new CarEntry { id = "p_gt", displayName = "Street GT", price = 80000, massKg = 1450, torqueNm = 520, redlineRpm = 8200, topSpeedKmh = 290, drive = 1, grip = 1.1f, length = 4.5f, defaultColor = Paints[4].color, policeRole = "undercover" });
+            All.Add(new CarEntry { id = "p_super", displayName = "Süper V10", price = 140000, massKg = 1550, torqueNm = 620, redlineRpm = 8700, topSpeedKmh = 320, drive = 2, grip = 1.18f, length = 4.5f, defaultColor = Paints[2].color });
+            All.Add(new CarEntry { id = "p_suv", displayName = "Bulldog SUV", price = 38000, massKg = 2100, torqueNm = 620, redlineRpm = 6000, topSpeedKmh = 230, drive = 2, grip = 0.95f, length = 4.9f, defaultColor = Paints[8].color, policeRole = "suv" });
         }
 
         public static CarEntry Get(string id)
@@ -74,6 +89,13 @@ namespace MostWanted
         }
     }
 
+    /// <summary>Boya tanımı.</summary>
+    public struct PaintDef
+    {
+        public string name; public Color color; public float metallic, smoothness;
+        public PaintDef(string n, Color c, float m, float s) { name = n; color = c; metallic = m; smoothness = s; }
+    }
+
     [Serializable]
     public class CarSave
     {
@@ -81,6 +103,7 @@ namespace MostWanted
         public bool owned;
         public int color = -1;
         public int[] tune = new int[Catalog.TuneCount];
+        public string engineSound = "";   // garajdan seçilen motor sesi (boş = aracın kendi sesi)
     }
 
     [Serializable]

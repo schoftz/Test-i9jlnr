@@ -11,7 +11,7 @@ namespace MostWanted
     {
         struct WheelInfo { public Vector3 pos; public float radius; public Transform vis; }
 
-        public static CarController Build(CarEntry def, Color? paint, Vector3 pos, Quaternion rot, CarRole role, int[] tune, string name)
+        public static CarController Build(CarEntry def, PaintDef? paint, Vector3 pos, Quaternion rot, CarRole role, int[] tune, string name)
         {
             var go = new GameObject(name);
             var vis = new GameObject("Gorsel").transform;
@@ -34,8 +34,7 @@ namespace MostWanted
             }
             if (wi == null) wi = ProceduralBody(def, vis, ref body, paintMats, brakeMats, headMats);
 
-            Color col = paint.HasValue ? paint.Value : def.defaultColor;
-            foreach (var m in paintMats) U.SetColor(m, col);
+            if (paint.HasValue) foreach (var m in paintMats) U.ApplyPaint(m, paint.Value);
 
             // ---- Fizik ----
             var rb = go.AddComponent<Rigidbody>();
@@ -252,26 +251,51 @@ namespace MostWanted
             body = bb;
 
             // malzemeler: boya, fren ve far
+            // --- boya malzemesi tespiti ---
+            // Pakette gövde rengi ALBEDO DOKUSUNDAN gelir (Blue.png, Black.png...) ve bazı araçlarda ana gövde
+            // malzemesinin adı "Mehroon"dur; "Body 5" ise bazen siyah trim. Bu yüzden: hariç tutulan isimler dışındaki
+            // malzemelerden toplam üçgen sayısı en büyük olan = ana boya. Adında paint/karoser geçenler de eklenir.
+            var triCount = new Dictionary<Material, long>();
+            var allRends = inst.GetComponentsInChildren<Renderer>(true);
+            foreach (var rend in allRends)
+            {
+                bool isWheel = false;
+                foreach (var w in result) if (w.vis != null && rend.transform.IsChildOf(w.vis)) isWheel = true;
+                if (isWheel) continue;
+                var mf = rend.GetComponent<MeshFilter>();
+                var mesh = mf != null ? mf.sharedMesh : null;
+                var mats = rend.sharedMaterials;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    var m = mats[i];
+                    if (m == null || IsNonPaint(m.name) || IsNonPaint(rend.name)) continue;
+                    long n = 1;
+                    if (mesh != null && i < mesh.subMeshCount) n = mesh.GetSubMesh(i).indexCount / 3;
+                    long prev; triCount.TryGetValue(m, out prev);
+                    triCount[m] = prev + n;
+                }
+            }
+            Material mainPaint = null; long best = -1;
+            foreach (var kv in triCount) if (kv.Value > best) { best = kv.Value; mainPaint = kv.Key; }
+
             var cloned = new Dictionary<Material, Material>();
-            Renderer biggest = null; float bigVol = 0f;
-            foreach (var rend in inst.GetComponentsInChildren<Renderer>(true))
+            foreach (var rend in allRends)
             {
                 var mats = rend.sharedMaterials;
                 bool changed = false;
-                string rn = rend.name.ToLowerInvariant();
                 for (int i = 0; i < mats.Length; i++)
                 {
                     var m = mats[i];
                     if (m == null) continue;
                     string mn = m.name.ToLowerInvariant();
-                    bool isPaint = mn.Contains("body") || mn.Contains("paint") || mn.Contains("boya") || (rn.Contains("body") && i == 0 && !mn.Contains("glass") && !mn.Contains("carbon"));
+                    bool isPaint = m == mainPaint || mn.Contains("paint") || mn.Contains("karoser") || mn.Contains("boya");
                     bool isBrake = mn.Contains("back light") || mn.Contains("rear light") || mn.Contains("red light") || mn.Contains("tail") || mn.Contains("brake") || mn.Contains("stop");
                     bool isHead = mn.Contains("front light") || mn.Contains("head");
                     if (!isPaint && !isBrake && !isHead) continue;
                     Material c;
                     if (!cloned.TryGetValue(m, out c))
                     {
-                        c = new Material(m);
+                        c = new Material(m);   // her araç kendi kopyasını boyar
                         cloned[m] = c;
                         if (isPaint) paintMats.Add(c);
                         else if (isBrake) brakeMats.Add(c);
@@ -280,20 +304,17 @@ namespace MostWanted
                     mats[i] = c; changed = true;
                 }
                 if (changed) rend.sharedMaterials = mats;
-                float vol = rend.bounds.size.x * rend.bounds.size.y * rend.bounds.size.z;
-                if (vol > bigVol && !rend.transform.IsChildOf(vis.Find("Teker0") ?? vis)) { bigVol = vol; biggest = rend; }
-            }
-            if (paintMats.Count == 0 && biggest != null)
-            {
-                var mats = biggest.sharedMaterials;
-                if (mats.Length > 0 && mats[0] != null)
-                {
-                    var c = new Material(mats[0]);
-                    mats[0] = c; biggest.sharedMaterials = mats; paintMats.Add(c);
-                }
             }
             foreach (var r in inst.GetComponentsInChildren<Renderer>()) r.shadowCastingMode = ShadowCastingMode.On;
             return result;
+        }
+
+        static readonly string[] NonPaintWords = { "glass", "cam", "tyre", "tire", "wheel", "rim", "jant", "light", "lamp", "far", "grill", "carbon", "crbon", "exhaust", "exhust", "screen", "neon", "chrome", "mirror", "interior", "seat", "engine" };
+        static bool IsNonPaint(string n)
+        {
+            n = n.ToLowerInvariant();
+            foreach (var w in NonPaintWords) if (n.Contains(w)) return true;
+            return false;
         }
 
         static Transform MakeWheel(Transform vis, Vector3 p, float r, bool right)
@@ -419,7 +440,7 @@ namespace MostWanted
         }
 
         /// <summary>Park etmiş araç: sadece görsel + kutu çarpıştırıcı (fizik yok).</summary>
-        public static GameObject BuildStatic(CarEntry def, Color paint)
+        public static GameObject BuildStatic(CarEntry def, PaintDef paint)
         {
             var go = new GameObject("ParkEtmisArac");
             var vis = new GameObject("Gorsel").transform;
@@ -434,7 +455,7 @@ namespace MostWanted
                 pm.Clear();
                 ProceduralBody(def, vis, ref body, pm, bm, hm);
             }
-            foreach (var m in pm) U.SetColor(m, paint);
+            foreach (var m in pm) U.ApplyPaint(m, paint);
             var bc = go.AddComponent<BoxCollider>();
             bc.center = body.center; bc.size = body.size;
             foreach (var r in go.GetComponentsInChildren<Renderer>()) r.gameObject.layer = OptimizationManager.TrafficLayer;
@@ -445,7 +466,7 @@ namespace MostWanted
         public static CarController BuildPolice(CarEntry def, string role, Vector3 pos, Quaternion rot)
         {
             bool under = role == "undercover";
-            Color c = under ? new Color(0.08f, 0.08f, 0.09f) : role == "suv" ? new Color(0.05f, 0.05f, 0.07f) : new Color(0.04f, 0.04f, 0.05f);
+            var c = new PaintDef("Polis", under ? new Color(0.09f, 0.09f, 0.1f) : new Color(0.03f, 0.03f, 0.04f), 0.5f, 0.8f);
             var car = Build(def, c, Vector3.zero, Quaternion.identity, CarRole.Police, null, under ? "Polis_Sivil" : role == "suv" ? "Polis_SUV" : "Polis");
             var vis = car.transform.Find("Gorsel");
             var bounds = new Bounds(Vector3.zero, Vector3.zero);

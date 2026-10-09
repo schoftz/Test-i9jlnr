@@ -59,6 +59,29 @@ namespace MostWanted
             if (m.HasProperty("_Color")) m.SetColor("_Color", c);
         }
 
+        /// <summary>
+        /// Araç boyası uygula: albedo dokusu kaldırılır (paket rengi dokudan geliyor), normal haritası korunur,
+        /// renk + metaliklik + parlaklık ayarlanır (cila görünümü).
+        /// </summary>
+        public static void ApplyPaint(Material m, PaintDef p)
+        {
+            if (m == null) return;
+            if (m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", null);
+            if (m.HasProperty("_MainTex")) m.SetTexture("_MainTex", null);
+            if (m.HasProperty("baseColorTexture")) m.SetTexture("baseColorTexture", null);
+            SetColor(m, p.color);
+            if (m.HasProperty("baseColorFactor")) m.SetColor("baseColorFactor", p.color);
+            if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", p.metallic);
+            if (m.HasProperty("metallicFactor")) m.SetFloat("metallicFactor", p.metallic);
+            if (m.HasProperty("_MetallicGlossMap")) m.SetTexture("_MetallicGlossMap", null);
+            m.DisableKeyword("_METALLICSPECGLOSSMAP");
+            if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", p.smoothness);
+            if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", p.smoothness);
+            if (m.HasProperty("roughnessFactor")) m.SetFloat("roughnessFactor", 1f - p.smoothness);
+            if (m.HasProperty("_EnvironmentReflections")) m.SetFloat("_EnvironmentReflections", 1f);
+            if (m.HasProperty("_SpecularHighlights")) m.SetFloat("_SpecularHighlights", 1f);
+        }
+
         public static void SetMainTex(Material m, Texture t)
         {
             if (m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", t);

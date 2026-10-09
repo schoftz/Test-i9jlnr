@@ -25,6 +25,9 @@ namespace MostWanted
         [Tooltip("I4, I6, F6, V8, V10 (boşsa tork/devirden tahmin edilir)")]
         public string engineType = "";
         public bool turbo = false;
+        [Tooltip("1 = küçük (hızlı dolar), 2 = büyük (gecikmeli, 'stututu')")]
+        public int turboSize = 1;
+        public bool supercharger = false;
         [Header("Görünüm")]
         public float length = 4.5f;
         public Color defaultColor = new Color(0.8f, 0.1f, 0.1f);

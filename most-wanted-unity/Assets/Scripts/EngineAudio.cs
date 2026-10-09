@@ -46,20 +46,35 @@ namespace MostWanted
         AudioSource synthSrc;
         int sr = 48000;
         volatile float pRpm = 900f, pThrottle, pBoost, pSlip, pSpeed01, pGravel, pNitro, pGain = 1f, pLimiter;
-        volatile int bovTrigger, popRequest;
+        volatile int bovTrigger, popRequest, bangRequest, surgeTrigger;
         volatile int popFlash;
         int cylinders = 4;
         float[] firePattern = { 1f }, ampPattern = { 1f };
         float formant1 = 180f, formant2 = 620f, formant3 = 1500f;
         bool turbo;
+
+        // ---- motor sesi karakteri ----
+        public static readonly string[] EngineTypes = { "I3", "I4", "I5", "F4", "I6", "V6", "V8", "V8FP", "V10", "V12", "ROTARY", "DIESEL", "EV" };
+        public static readonly string[] EngineNames = { "3 Silindir", "4 Silindir", "5 Silindir", "Boxer 4", "Sıralı 6", "V6", "V8 (Muscle)", "V8 Düz Krank", "V10", "V12", "Rotary (Wankel)", "Dizel", "Elektrik" };
+        public string engineType = "I4";
+        int turboSize;            // 0 yok, 1 küçük (hızlı), 2 büyük (gecikmeli)
+        bool supercharger, rotary, diesel, electric;
+        float noiseMix = 0.45f, jitter = 0.1f, intakeAmt = 0.25f, exhaustGain = 1f, popChance = 0.6f, f3Gain = 0.35f, orderHarm = 0f, formantQ = 1f, decayMul = 1f;
+        int exhaustLevel;
         bool synthEngine = true, synthTurbo = true, synthSqueal = true, synthWind = true, synthGravel = true, synthNitro = true;
 
         // DSP değişkenleri
         double firePhase, crankPhase, whistlePhase, squealPhase, squealLfo;
-        float env, dc, lp1, lp2, lp3, bovEnv, popEnv, hp1, hp2;
+        float env, dc, lp1, lp2, lp3, bovEnv, hp1, hp2, knockEnv, surgeEnv;
+        double scPhase, evPhase, invPhase, surgePhase;
+        // patlama (backfire) üreteci
+        float popThump, popThumpAtk, popCrackle, popFreq = 90f, popAmp, popGap;
+        double popPhase;
+        int popQueue;
+        float[] delayBuf; int delayIdx;
         int cyl;
         uint rng = 2463534242u;
-        Biquad f1, f2, f3, gravelBp;
+        Biquad f1, f2, f3, gravelBp, crackleBp, knockBp;
 
         // ana iş parçacığı
         float boost, lastThrottle = 0f, popFlameTimer, surfaceTimer, thumpCd;
@@ -127,22 +142,39 @@ namespace MostWanted
             if (!isPlayer) { synthSqueal = synthWind = synthGravel = synthNitro = false; }
 
             // prosedürel kaynak: sabit 1.0 DC döngüsü + OnAudioFilterRead (böylece 3B zayıflama/panning korunur)
-            synthSrc = gameObject.AddComponent<AudioSource>();
+            // ÖNEMLİ: OnAudioFilterRead kullanan bileşen, TEK AudioSource'u olan kendi alt objesinde olmalı
+            var sg = new GameObject("MotorSentez");
+            sg.transform.SetParent(transform, false);
+            synthSrc = sg.AddComponent<AudioSource>();
+            sg.AddComponent<SynthVoice>().owner = this;
             synthSrc.clip = AudioSynth.DcLoop();
             synthSrc.loop = true;
             ApplySpatial(synthSrc);
             synthSrc.volume = isPlayer ? 0.55f : 0.9f;
             synthSrc.Play();
 
-            f1.Bandpass(formant1, 1.6f, sr); f2.Bandpass(formant2, 2.2f, sr); f3.Bandpass(formant3, 3f, sr);
+            f1.Bandpass(formant1, 1.6f * formantQ, sr); f2.Bandpass(formant2, 2.2f * formantQ, sr); f3.Bandpass(formant3, 3f * formantQ, sr);
             gravelBp.Bandpass(900f, 0.8f, sr);
+            crackleBp.Bandpass(1300f, 0.6f, sr);
+            knockBp.Bandpass(3600f, 1.4f, sr);
+            delayBuf = new float[Mathf.Max(64, (int)(sr * 0.06f))];
             car.onShiftAudio = (gear, q) => PlayShift();
         }
 
-        /// <summary>Motor karakteri: silindir sayısı, ateşleme düzeni ve egzoz formantları.</summary>
+        static uint Hash(string t)
+        {
+            uint h = 2166136261u;
+            if (t != null) foreach (char c in t) { h ^= c; h *= 16777619u; }
+            return h;
+        }
+
+        /// <summary>Motor karakteri: tip + araç başına küçük farklar (formant, düzensizlik, emme, egzoz).</summary>
         void ConfigureCharacter(CarEntry def)
         {
             string t = def != null && !string.IsNullOrEmpty(def.engineType) ? def.engineType.ToUpperInvariant() : "";
+            // garajdan seçilen motor sesi (kozmetik)
+            var save = def != null && isPlayer ? SaveSystem.Get(def.id) : null;
+            if (save != null && !string.IsNullOrEmpty(save.engineSound)) t = save.engineSound;
             if (t == "" && def != null)
             {
                 if (def.redlineRpm >= 8400f) t = "V10";
@@ -150,31 +182,88 @@ namespace MostWanted
                 else if (def.torqueNm >= 450f) t = "I6";
                 else t = "I4";
             }
-            turbo = def != null && def.turbo;
+            if (t == "F6") t = "F4";
+            engineType = t;
+            turboSize = def != null && def.turbo ? Mathf.Max(1, def.turboSize) : 0;
+            supercharger = def != null && def.supercharger;
+            turbo = turboSize > 0;
+            rotary = diesel = electric = false;
+            noiseMix = 0.45f; jitter = 0.1f; intakeAmt = 0.25f; f3Gain = 0.35f; orderHarm = 0f; formantQ = 1f; decayMul = 1f; popChance = 0.6f;
             switch (t)
             {
+                case "I3":
+                    cylinders = 3; formant1 = 150f; formant2 = 520f; formant3 = 1300f; orderHarm = 1.5f;
+                    firePattern = new[] { 1f }; ampPattern = new[] { 1.05f, 0.95f, 1f };
+                    break;
+                case "I5":
+                    cylinders = 5; formant1 = 200f; formant2 = 690f; formant3 = 1700f; jitter = 0.12f;
+                    firePattern = new[] { 1.05f, 0.95f, 1.03f, 0.97f, 1f }; ampPattern = new[] { 1.12f, 0.84f, 1.06f, 0.9f, 1.0f }; // Audi "warble"
+                    break;
+                case "F4":
+                    cylinders = 4; formant1 = 135f; formant2 = 470f; formant3 = 1100f; noiseMix = 0.5f;
+                    firePattern = new[] { 0.86f, 1.14f, 0.9f, 1.1f }; ampPattern = new[] { 1.28f, 0.72f, 1.18f, 0.82f };  // eşit olmayan manifold "rumble"
+                    break;
+                case "I6":
+                    cylinders = 6; formant1 = 170f; formant2 = 560f; formant3 = 1600f; jitter = 0.06f;
+                    firePattern = new[] { 1f }; ampPattern = new[] { 1f, 0.97f };
+                    break;
+                case "V6":
+                    cylinders = 6; formant1 = 240f; formant2 = 820f; formant3 = 2700f; noiseMix = 0.7f; f3Gain = 0.6f; formantQ = 1.3f; // VQ "rasp"
+                    firePattern = new[] { 1f, 0.97f, 1.03f }; ampPattern = new[] { 1f, 0.92f, 1.06f };
+                    break;
                 case "V8":
-                    cylinders = 8; formant1 = 110f; formant2 = 340f; formant3 = 950f;
+                    cylinders = 8; formant1 = 110f; formant2 = 340f; formant3 = 950f; popChance = 0.8f;
                     firePattern = new[] { 0.82f, 1.18f, 1.0f, 0.9f, 1.12f, 0.95f, 1.05f, 0.98f }; // crossplane "burble"
                     ampPattern = new[] { 1.15f, 0.8f, 1.05f, 0.9f, 1.2f, 0.85f, 1.0f, 0.95f };
                     break;
+                case "V8FP":
+                    cylinders = 8; formant1 = 320f; formant2 = 950f; formant3 = 2800f; f3Gain = 0.75f; noiseMix = 0.35f; jitter = 0.04f; // düz krank "çığlık"
+                    firePattern = new[] { 1f }; ampPattern = new[] { 1f, 0.96f, 1.02f, 0.98f };
+                    break;
                 case "V10":
-                    cylinders = 10; formant1 = 260f; formant2 = 820f; formant3 = 2300f;
+                    cylinders = 10; formant1 = 260f; formant2 = 820f; formant3 = 2300f; f3Gain = 0.55f;
                     firePattern = new[] { 0.96f, 1.04f }; ampPattern = new[] { 1f, 0.92f };
                     break;
-                case "F6":
-                    cylinders = 6; formant1 = 210f; formant2 = 700f; formant3 = 1900f;
-                    firePattern = new[] { 1f, 1f, 1f }; ampPattern = new[] { 1f, 0.95f, 1.05f };
+                case "V12":
+                    cylinders = 12; formant1 = 360f; formant2 = 1100f; formant3 = 3200f; noiseMix = 0.25f; jitter = 0.03f; f3Gain = 0.7f; decayMul = 1.3f;
+                    firePattern = new[] { 1f }; ampPattern = new[] { 1f };
                     break;
-                case "I6":
-                    cylinders = 6; formant1 = 170f; formant2 = 560f; formant3 = 1600f;
-                    firePattern = new[] { 1f }; ampPattern = new[] { 1f, 0.97f };
+                case "ROTARY":
+                    rotary = true; cylinders = 4; formant1 = 300f; formant2 = 1200f; formant3 = 3000f; noiseMix = 0.7f; decayMul = 0.55f; f3Gain = 0.6f; popChance = 0.9f;
+                    firePattern = new[] { 1f, 1.02f }; ampPattern = new[] { 1.1f, 0.9f };
+                    break;
+                case "DIESEL":
+                    diesel = true; cylinders = 4; formant1 = 105f; formant2 = 360f; formant3 = 850f; noiseMix = 0.55f; popChance = 0f; intakeAmt = 0.15f;
+                    firePattern = new[] { 1f, 1.04f, 0.96f, 1f }; ampPattern = new[] { 1f, 0.9f, 1.05f, 0.95f };
+                    if (turboSize == 0) turboSize = 2;
+                    turbo = true;
+                    break;
+                case "EV":
+                    electric = true; cylinders = 4; popChance = 0f; turboSize = 0; turbo = false; supercharger = false;
                     break;
                 default:
+                    engineType = "I4";
                     cylinders = 4; formant1 = 190f; formant2 = 650f; formant3 = 1350f;
                     firePattern = new[] { 1f, 1.02f, 0.98f, 1f }; ampPattern = new[] { 1f, 0.9f, 1.05f, 0.95f };
                     break;
             }
+            // araç başına sabit küçük farklar; trafik/polis için ayrıca rastgele
+            uint h = Hash(def != null ? def.id : "x") ^ (isPlayer ? 0u : (uint)Random.Range(0, 100000));
+            float r1 = (h & 1023) / 1023f - 0.5f, r2 = ((h >> 10) & 1023) / 1023f - 0.5f, r3 = ((h >> 20) & 1023) / 1023f - 0.5f;
+            formant1 *= 1f + r1 * 0.16f; formant2 *= 1f + r2 * 0.16f; formant3 *= 1f + r3 * 0.16f;
+            jitter *= 1f + r2 * 0.6f;
+            intakeAmt *= 1f + r3 * 0.6f;
+            // "Egzoz" performans paketi: daha yüksek ses, daha çok patlama
+            exhaustLevel = car != null && car.tune != null && car.tune.Length > (int)Tune.Egzoz ? car.tune[(int)Tune.Egzoz] : 0;
+            exhaustGain = 1f + 0.22f * exhaustLevel;
+            popChance = Mathf.Clamp01(popChance * (1f + 0.5f * exhaustLevel));
+        }
+
+        /// <summary>Garajdaki "Motor Sesi" değişimi sonrası yeniden yapılandır.</summary>
+        public void Reconfigure()
+        {
+            ConfigureCharacter(car.def);
+            f1.Bandpass(formant1, 1.6f * formantQ, sr); f2.Bandpass(formant2, 2.2f * formantQ, sr); f3.Bandpass(formant3, 3f * formantQ, sr);
         }
 
         void Classify(AudioClip c)
@@ -251,15 +340,21 @@ namespace MostWanted
             float motorVol = AudioBus.Get(AudioBus.Bus.Motor), fxVol = AudioBus.Get(AudioBus.Bus.Efekt);
 
             // turbo basıncı ve BOV
-            if (turbo) boost = Mathf.MoveTowards(boost, th * Mathf.Clamp01((rpm / redline - 0.3f) / 0.5f), dt * (th > 0.5f ? 0.8f : 3f));
+            if (turbo)
+            {
+                // küçük turbo: hızlı dolar; büyük turbo: gecikmeli ama güçlü
+                float spool = turboSize == 2 ? 0.55f : 2.6f;
+                float onset = turboSize == 2 ? 0.45f : 0.25f;
+                boost = Mathf.MoveTowards(boost, th * Mathf.Clamp01((rpm / redline - onset) / 0.4f), dt * (th > 0.5f ? spool : 3f));
+            }
             if (turbo && lastThrottle > 0.6f && th < 0.2f && boost > 0.35f)
             {
-                bovTrigger = 1;
+                if (turboSize == 2 && Random.value < 0.6f) surgeTrigger = 1; else bovTrigger = 1;
                 AudioClip bov; if (extra.TryGetValue("bov", out bov)) fx.PlayOneShot(bov, 0.6f * fxVol);
             }
             // geri tepme (overrun) patlamaları
             bool overrun = th < 0.1f && rpm > redline * 0.55f && kmh > 30f;
-            if (overrun && lastThrottle > 0.5f) popRequest = Random.Range(2, 6);
+            if (overrun && lastThrottle > 0.5f && Random.value < popChance) popRequest = Random.Range(1, 4 + exhaustLevel);
             if (popFlash > 0)
             {
                 popFlash = 0;
@@ -361,6 +456,8 @@ namespace MostWanted
         {
             AudioClip c; fx.PlayOneShot(extra.TryGetValue("shift", out c) ? c : AudioSynth.Shift(), 0.5f * AudioBus.Get(AudioBus.Bus.Efekt));
             if (turbo && boost > 0.4f) bovTrigger = 1;
+            // Egzoz paketiyle vites atarken "BANG"
+            if (exhaustLevel >= 2 && !electric && car != null && car.rpm > car.redline * 0.7f) bangRequest = 1;
         }
 
         public void Impact(float relSpeed)
@@ -398,72 +495,129 @@ namespace MostWanted
             return (rng & 0xFFFFFF) / 8388608f - 1f;
         }
 
-        void OnAudioFilterRead(float[] data, int channels)
+        /// <summary>Ses iş parçacığında SynthVoice tarafından çağrılır.</summary>
+        public void Render(float[] data, int channels)
         {
+            if (delayBuf == null) return;
             float rate = sr;
             float rpm = pRpm, th = pThrottle, gain = pGain;
             float fire = rpm / 60f * cylinders * 0.5f;
             float crank = rpm / 60f;
             float rpm01 = Mathf.Clamp01(rpm / 8000f);
-            float decay = Mathf.Exp(-1f / (rate * Mathf.Clamp(0.55f / Mathf.Max(fire, 1f), 0.0015f, 0.03f)));
+            float decay = Mathf.Exp(-1f / (rate * Mathf.Clamp(0.55f * decayMul / Mathf.Max(fire, 1f), 0.0012f, 0.03f)));
             float load = 0.35f + 0.65f * th;
-            float whistleF = 1800f + pBoost * 5200f;
+            bool big = turboSize == 2;
+            float whistleF = big ? 1500f + pBoost * 3800f : 2800f + pBoost * 6500f;
+            float whistleAmp = big ? 0.045f : 0.03f;
             float bovDecay = Mathf.Exp(-1f / (rate * 0.28f));
-            float popDecay = Mathf.Exp(-1f / (rate * 0.045f));
+            float surgeDecay = Mathf.Exp(-1f / (rate * 0.55f));
+            float knockDecay = Mathf.Exp(-1f / (rate * 0.004f));
+            float thumpDecay = Mathf.Exp(-1f / (rate * Mathf.Lerp(0.03f, 0.08f, 0.5f)));
+            float crackDecay = Mathf.Exp(-1f / (rate * 0.025f));
+            float atkStep = 1f / (rate * 0.002f); // ≥2 ms atak: tıklama yok
             if (bovTrigger != 0) { bovTrigger = 0; bovEnv = 1f; }
+            if (surgeTrigger != 0) { surgeTrigger = 0; surgeEnv = 1f; }
+            if (bangRequest != 0) { bangRequest = 0; StartPop(2.2f); }
             float lpA = Mathf.Clamp01(400f / rate * 6.28f), lpW = Mathf.Clamp01(250f / rate * 6.28f);
             float squealF = 950f + pSpeed01 * 250f;
+            float twoPi = 6.2831853f;
 
             for (int i = 0; i < data.Length; i += channels)
             {
                 float s = 0f;
-                if (synthEngine)
+                float n = Noise();
+                if (synthEngine && electric)
                 {
-                    // ateşleme darbesi
+                    // elektrik: hıza bağlı motor ıslığı + inverter tonu, vites yok
+                    float mf = 60f + pSpeed01 * 2800f;
+                    evPhase += mf / rate; if (evPhase > 1.0) evPhase -= 1.0;
+                    invPhase += (1750f + 300f * pSpeed01) / rate; if (invPhase > 1.0) invPhase -= 1.0;
+                    float ev = Mathf.Sin((float)(evPhase * twoPi)) * 0.22f + Mathf.Sin((float)(evPhase * twoPi * 3.0)) * 0.05f;
+                    float inv = Mathf.Sin((float)(invPhase * twoPi)) * 0.05f * (0.3f + 0.7f * th);
+                    s += (ev + inv + n * 0.01f) * (0.4f + 0.6f * Mathf.Max(th, pSpeed01));
+                }
+                else if (synthEngine)
+                {
                     int pi = cyl % firePattern.Length;
                     firePhase += fire / rate / firePattern[pi];
                     if (firePhase >= 1.0)
                     {
                         firePhase -= 1.0;
                         cyl++;
-                        float amp = ampPattern[cyl % ampPattern.Length] * (0.9f + 0.2f * (Noise() * 0.5f + 0.5f));
-                        if (pLimiter > 0.5f && (cyl & 3) == 0) amp *= 0.2f; // devir kesici sekmesi
+                        float amp = ampPattern[cyl % ampPattern.Length] * (1f - jitter + 2f * jitter * (Noise() * 0.5f + 0.5f));
+                        if (rotary && rpm < 2600f && Noise() < -0.4f) amp *= 0.3f;        // rotary rölanti "brap"
+                        if (pLimiter > 0.5f && (cyl & 3) == 0) amp *= 0.2f;                // devir kesici sekmesi
                         env = amp * load;
-                        if (popRequest > 0 && th < 0.1f && Noise() > 0.3f) { popRequest--; popEnv = 1.6f; popFlash = 1; }
+                        if (diesel) knockEnv = 1f;
+                        if (popRequest > 0 && th < 0.1f && popQueue == 0 && Noise() > 0.2f) { popRequest--; StartPop(1f); }
                     }
                     env *= decay;
-                    float n = Noise();
-                    float pulse = env * (0.55f + 0.45f * n);
-                    // DC giderme
+                    float pulse = env * ((1f - noiseMix) + noiseMix * n);
                     dc += (pulse - dc) * 0.002f;
                     float x = pulse - dc;
-                    float exh = f1.Process(x) * 1.6f + f2.Process(x) * 0.9f + f3.Process(x) * (0.25f + 0.35f * th) + x * 0.25f;
+                    float exh = (f1.Process(x) * 1.6f + f2.Process(x) * 0.9f + f3.Process(x) * (f3Gain * (0.6f + 0.6f * th)) + x * 0.25f) * exhaustGain;
                     crankPhase += crank * 0.5f / rate; if (crankPhase > 1.0) crankPhase -= 1.0;
-                    float harm = Mathf.Sin((float)(crankPhase * 2.0 * System.Math.PI)) * 0.12f * load + Mathf.Sin((float)(crankPhase * 2.0 * System.Math.PI * cylinders)) * 0.05f;
+                    float cp = (float)(crankPhase * twoPi);
+                    float harm = Mathf.Sin(cp) * 0.12f * load + Mathf.Sin(cp * cylinders) * 0.05f;
+                    if (orderHarm > 0f) harm += Mathf.Sin(cp * orderHarm * 2f) * 0.08f * load;   // I3 1.5. derece salınımı
                     lp1 += (n - lp1) * lpA;
-                    float intake = lp1 * 0.25f * th * rpm01;
+                    float intake = lp1 * intakeAmt * th * rpm01;
                     float mech = n * 0.012f * rpm01;
                     s += exh + harm + intake + mech;
-                    // geri tepme
-                    if (popEnv > 0.001f) { popEnv *= popDecay; s += popEnv * (n * 0.8f + Mathf.Sin((float)(firePhase * 40.0)) * 0.4f); }
+                    if (diesel && knockEnv > 0.001f) { knockEnv *= knockDecay; s += knockBp.Process(n) * knockEnv * 0.5f * (1f - 0.5f * rpm01); }
+                    if (supercharger)
+                    {
+                        scPhase += crank * 9f / rate; if (scPhase > 1.0) scPhase -= 1.0;
+                        s += Mathf.Sin((float)(scPhase * twoPi)) * 0.035f * rpm01 * (0.4f + 0.6f * th);
+                    }
                 }
-                if (turbo && synthTurbo)
+                // ---- egzoz patlamaları: kalın gövde (60–150 Hz) + çıtırtı + yankı ----
+                float popOut = 0f;
+                if (popThump > 0.0005f || popCrackle > 0.0005f)
+                {
+                    popThumpAtk = Mathf.Min(1f, popThumpAtk + atkStep);
+                    popPhase += popFreq / rate;
+                    popFreq *= 0.99995f;
+                    popOut += Mathf.Sin((float)(popPhase * twoPi)) * popThump * popThumpAtk * popAmp;
+                    popOut += crackleBp.Process(n) * popCrackle * popThumpAtk * popAmp * 1.6f;
+                    popThump *= thumpDecay; popCrackle *= crackDecay;
+                }
+                if (popQueue > 0)
+                {
+                    popGap -= 1f / rate;
+                    if (popGap <= 0f) { popQueue--; StartPop(Mathf.Lerp(0.6f, 1.1f, Noise() * 0.5f + 0.5f), false); }
+                }
+                // basit geri beslemeli gecikme (~45 ms) sadece patlamalar için
+                float dly = delayBuf[delayIdx];
+                delayBuf[delayIdx] = popOut + dly * 0.32f;
+                delayIdx = (delayIdx + 1) % delayBuf.Length;
+                s += (popOut + dly * 0.35f) * exhaustGain;
+
+                if (turbo && synthTurbo && synthEngine)
                 {
                     whistlePhase += whistleF / rate; if (whistlePhase > 1.0) whistlePhase -= 1.0;
-                    s += Mathf.Sin((float)(whistlePhase * 2.0 * System.Math.PI)) * 0.035f * pBoost;
+                    s += Mathf.Sin((float)(whistlePhase * twoPi)) * whistleAmp * pBoost;
                     if (bovEnv > 0.001f)
                     {
                         bovEnv *= bovDecay;
-                        float nn = Noise();
-                        hp1 = nn - hp2; hp2 = nn; // basit yüksek geçiren
+                        hp1 = n - hp2; hp2 = n;
                         s += hp1 * bovEnv * 0.35f;
+                    }
+                    if (surgeEnv > 0.001f)
+                    {
+                        // büyük turbo kompresör dalgalanması "stututu" (~18 Hz)
+                        surgeEnv *= surgeDecay;
+                        surgePhase += 18.0 / rate; if (surgePhase > 1.0) surgePhase -= 1.0;
+                        float gate = surgePhase < 0.35 ? 1f : 0.1f;
+                        hp1 = n - hp2; hp2 = n;
+                        s += hp1 * surgeEnv * gate * 0.3f;
                     }
                 }
                 if (synthSqueal && pSlip > 0.01f)
                 {
                     squealLfo += 7.0 / rate;
-                    squealPhase += (squealF + 90f * Mathf.Sin((float)(squealLfo * 6.283))) / rate; if (squealPhase > 1.0) squealPhase -= 1.0;
-                    s += (Mathf.Sin((float)(squealPhase * 6.283)) * 0.6f + Noise() * 0.15f) * pSlip * 0.22f;
+                    squealPhase += (squealF + 90f * Mathf.Sin((float)(squealLfo * twoPi))) / rate; if (squealPhase > 1.0) squealPhase -= 1.0;
+                    s += (Mathf.Sin((float)(squealPhase * twoPi)) * 0.6f + Noise() * 0.15f) * pSlip * 0.22f;
                 }
                 if (synthWind && pSpeed01 > 0.05f)
                 {
@@ -481,11 +635,33 @@ namespace MostWanted
                     lp3 += (nn - lp3) * 0.5f;
                     s += (nn - lp3) * 0.12f;
                 }
-                // yumuşak sınırlayıcı
                 s *= gain * 0.8f;
                 s = s / (1f + Mathf.Abs(s));
                 for (int c = 0; c < channels; c++) data[i + c] *= s; // giriş: 3B zayıflatılmış DC (1.0)
             }
+        }
+
+        /// <summary>Patlama başlat (ses iş parçacığı). Bazen 2–3'lü "brap-pap-pap" dizisi kuyruğa eklenir.</summary>
+        void StartPop(float strength, bool chain = true)
+        {
+            popThump = 1f; popCrackle = 0.8f; popThumpAtk = 0f;
+            popFreq = 60f + 90f * (Noise() * 0.5f + 0.5f);
+            popAmp = strength * (0.8f + 0.4f * (Noise() * 0.5f + 0.5f));
+            popPhase = 0.0;
+            popFlash = 1;
+            if (chain && popQueue == 0 && Noise() > 0.2f) { popQueue = Noise() > 0.4f ? 2 : 1; }
+            popGap = 0.04f + 0.05f * (Noise() * 0.5f + 0.5f);
+        }
+    }
+
+    /// <summary>Tek AudioSource'lu alt objede OnAudioFilterRead → EngineAudio.Render.</summary>
+    public class SynthVoice : MonoBehaviour
+    {
+        [System.NonSerialized] public EngineAudio owner;
+        void OnAudioFilterRead(float[] data, int channels)
+        {
+            var o = owner;
+            if (o != null) o.Render(data, channels);
         }
     }
 

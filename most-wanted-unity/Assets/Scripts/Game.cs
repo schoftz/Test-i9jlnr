@@ -346,7 +346,9 @@ namespace MostWanted
             var d = SaveSystem.Data;
             var def = Catalog.Get(d.selected) ?? Catalog.Garage[0];
             var save = SaveSystem.Get(def.id);
-            Color col = save != null && save.color >= 0 ? Catalog.Paints[save.color] : def.defaultColor;
+            PaintDef? col = null;   // -1: fabrika görünümü (model dokusu korunur)
+            if (save != null && save.color >= 0 && save.color < Catalog.Paints.Length) col = Catalog.Paints[save.color];
+            else if (def.prefab == null) col = new PaintDef("Fabrika", def.defaultColor, 0.5f, 0.8f);
             pos = GroundSnap(pos);
             player = CarFactory.Build(def, col, pos, rot, CarRole.Player, save != null ? save.tune : null, "Oyuncu");
             fallTimer = 0f;
