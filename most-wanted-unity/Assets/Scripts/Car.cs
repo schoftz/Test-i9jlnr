@@ -555,7 +555,9 @@ namespace MostWanted
                 wheels[2].motorTorque = wheels[3].motorTorque = 0.0001f;
             }
             // Saarg sürtünme: ön 2.0, arka düşük (drift ayarı), el freninde arka yanal daha da düşer
-            float rearSide = Mathf.Lerp(1.45f, 0.85f, handbrakeBlend);
+            // gaz bırakılınca (el freni yok) arka tutuş öne eşitlenir → gaz kesince ani 360 dönme yok
+            liftBlend = Mathf.MoveTowards(liftBlend, throttle < 0.2f && !handbrake ? 1f : 0f, dt * 4f);
+            float rearSide = Mathf.Lerp(Mathf.Lerp(1.45f, 2.1f, liftBlend), 0.85f, handbrakeBlend);
             for (int i = 0; i < 4; i++)
             {
                 wheels[i].forwardFriction = ArcadeDrift.Forward(2f * g);
@@ -566,6 +568,13 @@ namespace MostWanted
             {
                 WheelHit h;
                 wSlip[i] = wheels[i].GetGroundHit(out h) ? Mathf.Max(Mathf.Abs(h.sidewaysSlip) / 0.2f, Mathf.Abs(h.forwardSlip) / 0.4f - 0.5f) : 0f;
+            }
+            // dönme koruması: el freni yokken aşırı savrulma hızı yumuşakça kırpılır (spin/360 olmasın)
+            if (!handbrake && GroundedCount() >= 2)
+            {
+                Vector3 la = transform.InverseTransformDirection(rb.angularVelocity);
+                float maxYaw = Mathf.Lerp(2.6f, 1.4f, Mathf.Clamp01(kmh / 140f)) * (throttle < 0.2f ? 0.8f : 1f);
+                if (Mathf.Abs(la.y) > maxYaw) { la.y = Mathf.Lerp(la.y, Mathf.Sign(la.y) * maxYaw, 0.35f); rb.angularVelocity = transform.TransformDirection(la); }
             }
             if (GroundedCount() >= 2)
             {

@@ -494,6 +494,7 @@ namespace MostWanted
             if (saveTimer > 30f) { saveTimer = 0f; SaveSystem.Save(); }
         }
 
+        float dragHintT = -10f;
         void HandleKeys()
         {
             if (menu == Menu.Garage || menu == Menu.Title) return;   // garaj / başlık ekranı kendi tuşlarını işler
@@ -511,10 +512,12 @@ namespace MostWanted
                 {
                     if (!NearGarage) Toast("Garaj için haritadaki yeşil işarete git.");
                     else if (police.pursuit) Toast("Polis peşindeyken garaja giremezsin!");
-                    else if (race.Active) Toast("Yarış sırasında garaja giremezsin!");
+                    else if (race.Active) Toast("Yarış sırasında garaja giremezsin! Yarıştan çıkmak için BACKSPACE.");
                     else OpenMenu(Menu.Garage);
                 }
             }
+            if (Input.GetKeyDown(KeyCode.Backspace) && menu == Menu.None && race.Active) { race.Abort(); Toast("Yarıştan çıkıldı."); }
+            if (drag && Input.GetKeyDown(KeyCode.E) && menu == Menu.None && Time.unscaledTime - dragHintT > 6f) { dragHintT = Time.unscaledTime; Toast("Drag yarışında E/Q vites değiştirir. Çıkmak için BACKSPACE."); }
             if (Input.GetKeyDown(KeyCode.J)) { if (menu == Menu.Jobs) CloseMenu(); else if (menu == Menu.None) OpenMenu(Menu.Jobs); }
             if (Input.GetKeyDown(KeyCode.B)) { if (menu == Menu.Blacklist) CloseMenu(); else if (menu == Menu.None) OpenMenu(Menu.Blacklist); }
             if (Input.GetKeyDown(KeyCode.M) || Input.GetKeyDown(KeyCode.Tab)) { if (menu == Menu.Map) CloseMenu(); else if (menu == Menu.None) OpenMenu(Menu.Map); }

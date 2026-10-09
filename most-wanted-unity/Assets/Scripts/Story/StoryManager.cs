@@ -421,12 +421,18 @@ namespace MostWanted
 
         // ================================================================ yarışlar
         /// <summary>Hedef noktasına yavaşça girince true (bir kez; uzaklaşınca yeniden kurulur).</summary>
+        float promptT = -10f;
         bool Approach(Game g, Vector3 p)
         {
             if (g.race.Active || g.police.pursuit || g.menu != Game.Menu.None) return false;
             float d = U.FlatDist(g.player.transform.position, p);
             if (d > 40f) armed = true;
-            if (armed && d < 16f && g.player.SpeedKmh < 110f) { armed = false; return true; }
+            // yarış artık kendiliğinden başlamaz: noktadayken ENTER ile başlatılır
+            if (armed && d < 16f && g.player.SpeedKmh < 110f)
+            {
+                if (Time.unscaledTime - promptT > 3f) { promptT = Time.unscaledTime; g.Toast("Yarışa başlamak için ENTER"); }
+                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)) { armed = false; return true; }
+            }
             return false;
         }
 
