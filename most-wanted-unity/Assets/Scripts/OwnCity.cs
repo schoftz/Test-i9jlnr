@@ -585,6 +585,8 @@ namespace MostWanted
             Color[] base_ = { new Color(0.55f, 0.66f, 0.78f), new Color(0.72f, 0.71f, 0.68f), new Color(0.62f, 0.36f, 0.27f), new Color(0.86f, 0.8f, 0.68f), new Color(0.9f, 0.86f, 0.78f), new Color(0.6f, 0.62f, 0.66f), new Color(0.6f, 0.6f, 0.58f) };
             for (int s = 0; s < 7; s++)
             {
+                var fm = CityLook.Facade(s, base_[s]);   // MW/Facade (prosedürel pencereler); yoksa doku tabanlı Lit
+                if (fm != null) { styleMats[s] = fm; continue; }
                 Texture2D alb, emi;
                 FacadeTextures(s, rng, out alb, out emi);
                 var m = U.NewMat(base_[s], s == 0 ? 0.88f : 0.25f, s == 0 ? 0.6f : 0.05f);
@@ -597,9 +599,13 @@ namespace MostWanted
             }
             roofMat = U.Mat(new Color(0.32f, 0.32f, 0.34f), 0.2f, 0f);
             roofTileMat = U.Mat(new Color(0.55f, 0.2f, 0.14f), 0.3f, 0f);
-            shopMat = U.NewMat(new Color(0.08f, 0.1f, 0.12f), 0.9f, 0.3f);
-            U.SetEmission(shopMat, new Color(0.15f, 0.12f, 0.08f));
-            windowMats.Add(shopMat);
+            shopMat = CityLook.Facade(7, new Color(0.3f, 0.3f, 0.32f));
+            if (shopMat == null)
+            {
+                shopMat = U.NewMat(new Color(0.08f, 0.1f, 0.12f), 0.9f, 0.3f);
+                U.SetEmission(shopMat, new Color(0.15f, 0.12f, 0.08f));
+                windowMats.Add(shopMat);
+            }
             helipadMat = U.Emissive(new Color(0.15f, 0.15f, 0.16f), new Color(0.6f, 0.5f, 0.1f));
         }
 
@@ -660,6 +666,7 @@ namespace MostWanted
                 Transform croot;
                 if (!colliderRoots.TryGetValue(k, out croot)) { croot = new GameObject("BinaCarpisma").transform; croot.SetParent(bRoot, false); colliderRoots[k] = croot; }
                 if (b.style == 6) { ParkingGarage(kit, croot, mp, baseY); continue; }
+                float facadeU0 = rng.Next(1, 200) * 36f;   // 36 m: tüm pencere aralıklarının katı → ızgara hizalı, desen bina başına farklı
                 for (int pi = 0; pi < b.parts.Count; pi++)
                 { var part = b.parts[pi];
                     if (pi > 0 && surf.BoxOnRoad(part.c, part.w, part.d, part.rot, 0.5f)) continue;
@@ -670,10 +677,10 @@ namespace MostWanted
                     bool shop = part.y0 <= 0f && (b.zone == Zone.Downtown || b.zone == Zone.Midrise) && b.style != 0;
                     if (shop)
                     {
-                        kit.Box(9, 7, c, part.w + 0.2f, part.d + 0.2f, rotDeg, y0, 1.5f + 4.2f);
-                        kit.Box(b.style, 7, c, part.w, part.d, rotDeg, 4.2f, part.h - 4.2f);
+                        kit.Box(9, 7, c, part.w + 0.2f, part.d + 0.2f, rotDeg, y0, 1.5f + 4.2f, false, facadeU0);
+                        kit.Box(b.style, 7, c, part.w, part.d, rotDeg, 4.2f, part.h - 4.2f, false, facadeU0);
                     }
-                    else kit.Box(b.style, 7, c, part.w, part.d, rotDeg, y0, h);
+                    else kit.Box(b.style, 7, c, part.w, part.d, rotDeg, y0, h, false, facadeU0);
                     // çarpıştırıcı
                     var cg = new GameObject("B"); cg.transform.SetParent(croot, false);
                     cg.transform.SetPositionAndRotation(c + Vector3.up * (part.y0 + part.h * 0.5f), Quaternion.Euler(0, rotDeg, 0));

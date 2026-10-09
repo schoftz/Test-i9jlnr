@@ -29,13 +29,13 @@ namespace MostWanted
         }
 
         /// <summary>Döndürülmüş kutu (y0 tabandan h yükseklik). Duvar UV'leri dünya ölçüsünde (m).</summary>
-        public void Box(int sideSub, int topSub, Vector3 center, float w, float d, float rotY, float y0, float h, bool bottom = false)
+        public void Box(int sideSub, int topSub, Vector3 center, float w, float d, float rotY, float y0, float h, bool bottom = false, float u0 = 0f)
         {
             Quaternion q = Quaternion.Euler(0, rotY, 0);
             Vector3 r = q * Vector3.right * (w * 0.5f), f = q * Vector3.forward * (d * 0.5f);
             Vector3 b0 = center + Vector3.up * y0, t0 = center + Vector3.up * (y0 + h);
             Vector3[] c = { -r - f, -r + f, r + f, r - f }; // sol-arka, sol-ön, sağ-ön, sağ-arka
-            float u = 0f;
+            float u = u0;   // cephe deseni bina başına kaydırılır (MW/Facade pencere rastgeleliği)
             for (int i = 0; i < 4; i++)
             {
                 Vector3 p0 = c[i], p1 = c[(i + 1) % 4];
