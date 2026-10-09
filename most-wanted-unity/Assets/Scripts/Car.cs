@@ -246,6 +246,28 @@ namespace MostWanted
                     }
                 }
             }
+            // takla koruması: çarpışma darbesi gövdeyi devirmesin (360 dönme/zıplama). Yuvarlanma/yunuslama hızı sınırlı,
+            // tek adımda gelen yukarı itme kırpılır, havadayken araç kendini düz tutar.
+            if (!locked)
+            {
+                Vector3 lav0 = transform.InverseTransformDirection(rb.angularVelocity);
+                float capRP = isPlayer ? 1.6f : 2.5f;
+                if (Mathf.Abs(lav0.x) > capRP || Mathf.Abs(lav0.z) > capRP)
+                {
+                    lav0.x = Mathf.Clamp(lav0.x, -capRP, capRP); lav0.z = Mathf.Clamp(lav0.z, -capRP, capRP);
+                    rb.angularVelocity = transform.TransformDirection(lav0);
+                }
+                if (hasLastVel && v.y - lastVel.y > 3f && v.y > 2f)
+                {
+                    v.y = Mathf.Max(lastVel.y, 0f) + 1f;
+                    U.SetVel(rb, v);
+                }
+                if (transform.up.y < 0.9f)
+                {
+                    Vector3 axis = Vector3.Cross(transform.up, Vector3.up);
+                    rb.AddTorque(axis * (isPlayer ? 14f : 8f), ForceMode.Acceleration);
+                }
+            }
             lastVel = v; hasLastVel = true;
             float fwd = Vector3.Dot(v, transform.forward);
             float kmh = v.magnitude * 3.6f;
@@ -675,8 +697,41 @@ namespace MostWanted
         void OnCollisionEnter(Collision c)
         {
             if (c.collider != null) lastHitName = c.collider.name;
+            // sokak lambası: araç direğe takılıp takla atmasın — direk devrilir, araç hızını büyük ölçüde korur (NFS gibi)
+            if (c.collider != null && c.collider.name == "Lamba" && c.rigidbody == null && hasLastVel && lastVel.magnitude > 4f)
+            {
+                KnockLamp(c.collider);
+                U.SetVel(rb, new Vector3(lastVel.x, Mathf.Min(lastVel.y, 0f), lastVel.z) * 0.85f);
+                Vector3 av = rb.angularVelocity; rb.angularVelocity = new Vector3(0f, Mathf.Clamp(av.y, -1f, 1f), 0f);
+                return;
+            }
             if (mw && c.rigidbody != null && !c.rigidbody.isKinematic) mwDynHit = true;
             if (onHit != null) onHit(c);
+        }
+
+        void KnockLamp(Collider pole)
+        {
+            var pt = pole.transform;
+            var prb = pole.gameObject.AddComponent<Rigidbody>();
+            prb.mass = 60f;
+            Vector3 push = U.Flat(lastVel); push.y = 0f;
+            U.SetVel(prb, push * 0.6f);
+            prb.angularVelocity = Vector3.Cross(Vector3.up, push.normalized) * 2.5f;
+            foreach (var col in GetComponentsInChildren<Collider>()) Physics.IgnoreCollision(pole, col);
+            // lamba başı ve ışığı da düşsün/sönsün
+            if (pt.parent != null)
+                foreach (Transform ch in pt.parent)
+                {
+                    Vector3 d = ch.position - pt.position; d.y = 0f;
+                    if (d.sqrMagnitude > 16f) continue;
+                    if (ch.name == "LambaBas" && ch.GetComponent<Rigidbody>() == null)
+                    {
+                        if (ch.GetComponent<Collider>() == null) ch.gameObject.AddComponent<BoxCollider>();
+                        var hrb = ch.gameObject.AddComponent<Rigidbody>(); hrb.mass = 15f; U.SetVel(hrb, push * 0.5f);
+                    }
+                    else if (ch.name == "LambaIsik") ch.gameObject.SetActive(false);
+                }
+            Destroy(pole.gameObject, 20f);
         }
 
         public void Damage(float amount)
