@@ -1,5 +1,5 @@
 // Kalkış testi: 0–50 km/sa, %0 ve %12 eğim (oyundaki CarMath ile).
-// Derleme: mcs LaunchSim.cs ../../Assets/Scripts/CarMath.cs && mono LaunchSim.exe
+// Derleme: mcs LaunchSim.cs ../../Assets/Scripts/CarMath.cs ../../Assets/ThirdParty/RVP/RvpTire.cs && mono LaunchSim.exe
 using System; using MostWanted;
 class LaunchSim {
   static float Run(float m, float tq, float red, float top, int drive, float grip, double slopePct, bool assists) {
@@ -34,7 +34,7 @@ class LaunchSim {
     Console.WriteLine("{0,-14} {1,8} {2,10} {3,10}", "Araç", "boy m", "açı@30", "R@30 m");
     foreach (var c in new[] { ("Kompakt Hatch", 4.1f), ("Sokak Coupe", 4.3f), ("Tuner S", 4.4f), ("Coupe RS", 4.45f), ("Bulldog SUV", 4.9f), ("Titan Pikap", 5.0f), ("Muscle V8", 4.8f), ("Drift Spec", 4.4f), ("Street GT-R", 4.5f), ("Süper Kanat", 4.55f) })
     {
-      float wb = c.Item2 * 0.6f, ang = CarMath.SteerLimit(30f, 32f);
+      float wb = c.Item2 * 0.6f, ang = RVP.RvpTire.SteerCurve(30f / 3.6f) * 40f;
       float R = wb / (float)Math.Tan(ang * Math.PI / 180.0);
       Console.WriteLine("{0,-14} {1,8:0.00} {2,9:0.0}° {3,9:0.0}{4}", c.Item1, c.Item2, ang, R, R < 12f ? "  OK" : "  BÜYÜK!");
     }

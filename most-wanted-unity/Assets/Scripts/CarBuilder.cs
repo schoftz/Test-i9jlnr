@@ -76,25 +76,18 @@ namespace MostWanted
             car.paintMats = paintMats; car.brakeMats = brakeMats; car.headMats = headMats;
 
             string[] wn = { "FL", "FR", "RL", "RR" };
-            const float susp = 0.18f;
+            float susp = CarController.SuspensionTravel;
             for (int i = 0; i < 4; i++)
             {
-                var wgo = new GameObject("WC_" + wn[i]);
+                // süspansiyon bağlantı noktası (RVP ışın başlangıcı / drift modunda WheelCollider)
+                var wgo = new GameObject("WA_" + wn[i]);
                 wgo.transform.SetParent(go.transform, false);
                 wgo.transform.localPosition = wi[i].pos + Vector3.up * (susp * 0.5f + 0.06f);
-                var wc = wgo.AddComponent<WheelCollider>();
-                wc.radius = wi[i].radius;
-                wc.mass = 22f;
-                wc.suspensionDistance = susp;
-                // kuvvetler ağırlık merkezi yüksekliğine yakın uygulanır -> virajda devrilme momenti ~0
-                wc.forceAppPointDistance = Mathf.Max(0.05f, com - 0.08f);
-                wc.wheelDampingRate = 0.4f;
-                wc.forwardFriction = new WheelFrictionCurve { extremumSlip = 0.35f, extremumValue = 1f, asymptoteSlip = 0.9f, asymptoteValue = 0.7f, stiffness = 1.5f };
-                wc.sidewaysFriction = new WheelFrictionCurve { extremumSlip = 0.22f, extremumValue = 1f, asymptoteSlip = 0.6f, asymptoteValue = 0.72f, stiffness = 1.4f };
-                if (i == 0) wc.ConfigureVehicleSubsteps(5f, 12, 15);
-                car.wheels[i] = wc;
+                car.wheelAnchor[i] = wgo.transform;
+                car.wheelRadii[i] = wi[i].radius;
                 car.wheelVis[i] = wi[i].vis;
             }
+            car.SetPhysicsMode(false);   // varsayılan: RVP; drift ayarı Game tarafından garaj çıkışında açılır
             car.Configure(def, tune);
 
             // efektler
@@ -532,10 +525,10 @@ namespace MostWanted
             }
             for (int i = 0; i < 2; i++)
             {
-                var wc = car.wheels[2 + i];
+                var wa = car.wheelAnchor[2 + i];
                 var g = new GameObject("LastikDumani");
                 g.transform.SetParent(car.transform, false);
-                g.transform.localPosition = wc.transform.localPosition + Vector3.down * 0.3f;
+                g.transform.localPosition = wa.localPosition + Vector3.down * 0.3f;
                 var ps = g.AddComponent<ParticleSystem>();
                 var main = ps.main;
                 main.startLifetime = 1.6f;

@@ -326,7 +326,7 @@ namespace MostWanted
                 float ang = ArcStart + k / maxK * ArcSweep;
                 bool major = i % 2 == 0;
                 Color col = k >= redK ? new Color(1f, 0.2f, 0.15f) : Color.white;
-                GUIUtility.RotateAroundPivot(ang, c);
+                Rot(ang, c, oldM);
                 Rect(new Rect(c.x - (major ? 1.5f : 1f), c.y - R + 2f, major ? 3f : 2f, major ? 16f : 9f), col);
                 GUI.matrix = oldM;
                 if (major)
@@ -345,8 +345,8 @@ namespace MostWanted
             // ibre
             float rpmK = Mathf.Clamp(p.rpm / 1000f, 0f, maxK);
             float na = ArcStart + rpmK / maxK * ArcSweep;
-            GUIUtility.RotateAroundPivot(na, c);
-            Rect(new Rect(c.x - 2f, c.y - R + 6f, 4f, R - 6f), p.revLimiter ? new Color(1f, 0.15f, 0.1f) : new Color(1f, 0.25f, 0.15f));
+            Rot(na, c, oldM);
+            Rect(new Rect(c.x - 2f, c.y - (R - 18f), 4f, R - 18f), p.revLimiter ? new Color(1f, 0.15f, 0.1f) : new Color(1f, 0.25f, 0.15f));
             GUI.matrix = oldM;
             Rect(new Rect(c.x - 7, c.y - 7, 14, 14), new Color(0.12f, 0.12f, 0.14f, 1f));
 
@@ -359,6 +359,12 @@ namespace MostWanted
             Shadow(new Rect(c.x - 40, c.y + 100, 100, 26), "KM/S", lblSmall);
         }
 
+        /// <summary>Dönmüş çizim: matris her seferinde temel matristen (ölçek) AÇIKÇA kurulur — RotateAroundPivot ölçekli matriste pivotu kaydırıp birikerek çapraz iz bırakıyordu.</summary>
+        static void Rot(float ang, Vector2 c, Matrix4x4 baseM)
+        {
+            GUI.matrix = baseM * Matrix4x4.TRS(new Vector3(c.x, c.y, 0f), Quaternion.Euler(0f, 0f, ang), Vector3.one) * Matrix4x4.TRS(new Vector3(-c.x, -c.y, 0f), Quaternion.identity, Vector3.one);
+        }
+
         /// <summary>Kesintisiz ince kavisli çubuk (sık, üst üste binen dilimler — kesikli görünmez).</summary>
         void ArcBar(Vector2 c, float radius, float v, Color col, Matrix4x4 oldM)
         {
@@ -369,7 +375,7 @@ namespace MostWanted
             for (int i = 0; i < seg; i++)
             {
                 float ang = ArcStart + (i + 0.5f) / seg * sweep;
-                GUIUtility.RotateAroundPivot(ang + 90f, c);
+                Rot(ang + 90f, c, oldM);
                 Rect(new Rect(c.x - segLen * 0.5f, c.y - radius, segLen, 4f), i < lit ? col : new Color(1f, 1f, 1f, 0.1f));
                 GUI.matrix = oldM;
             }
@@ -389,7 +395,7 @@ namespace MostWanted
                 float ang = (float)rnd.NextDouble() * 360f;
                 float dist = 520f + (float)rnd.NextDouble() * 420f;   // sadece ekran kenarlarına yakın
                 float len = 120f + (float)rnd.NextDouble() * 260f;
-                GUIUtility.RotateAroundPivot(ang, c);
+                Rot(ang, c, oldM);
                 Rect(new Rect(c.x + dist, c.y - 0.75f, len, 1.5f), new Color(1f, 1f, 1f, 0.10f * speedLineAlpha));
                 GUI.matrix = oldM;
             }

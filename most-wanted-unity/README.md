@@ -119,11 +119,23 @@ Kazanç: yarış ₺2.200–7.500 (2.: %40, 3.: %14), teslimat ₺600–3.000, p
 Ortalama ~₺1.000–1.500/dk → bir sonraki araç yaklaşık 20–40 dk. Performans paketi fiyatı aracın kademesine göre
 (₺500 + fiyatın %5'i × seviye); satış %60. Başlangıç parası ₺12.000.
 
-### Direksiyon
-Hıza duyarlı açı: 38° (dur) → 16° (100 km/sa) → 9° (200 km/sa); tam kilit ~0.15 sn. Arcade dönüş yardımı girdi
-yönünde savrulma ekler (understeer'i giderir), girdi yokken savrulmayı sönümler. Düşük hızda ön tutuş ≥ arka, yüksek
-hızda arka artar (spin yok). Duraklat menüsünde **Direksiyon hassasiyeti** (0.6–1.6).
-`Tools/physics_sim/SteerSim.cs`: dinamik test (30 km/sa tam kilit yarıçapı, 100 km/sa yanal ivme).
+### Sürüş fiziği (iki mod, araç başına tek kontrolcü)
+- **Normal mod — Randomation Vehicle Physics (RVP, JustInvoke, MIT)** — tüm araçlar, trafik, polis, rakipler.
+  `Assets/ThirdParty/RVP`: ışın-izli süspansiyon (RVP `Suspension`), RVP lastik eğrileri ve kayma hesabı
+  (`Wheel.GetSlip/ApplyFriction`, yanal kayma = yanal hız × 0.1, kayma bağımlılığı), RVP direksiyon eğrisi
+  (0 m/s → %100, 30 m/s → %20, 40° aralık, steerRate lerp), TCS/ABS (talep eğrinin tepesinde kırpılır), RVP savrulma
+  yardımı (yalnızca kayarken; hedef savrulma tutuş sınırıyla kırpılır → denge kontrolü). Yanal kuvvet **gazdan bağımsız**;
+  sadece gerçek patinaj/kilitlenmede düşer. Gaz bırakınca hafif ağırlık transferi → çok hafif lift-off oversteer.
+  El freni = arka tekerler kilitlenir (RVP ebrake) → drift.
+- **Drift modu — Arcade Car Physics (Saarg, MIT)** — sadece Drift Araçları (Supra, R34, R35, M4) drift ayarı açıkken,
+  garajdan çıkışta `CarController.SetPhysicsMode(true)` ile değişir. `Assets/ThirdParty/ArcadeCarPhysics`: WheelCollider,
+  Saarg sürtünme eğrileri (ileri 0.4/1–0.8/0.5, yanal 0.2/1–0.5/0.75), düşük arka yanal sertlik, el freni arka yanal
+  sertliği düşürür, Saarg drift kuvveti/torku, downforce.
+- Bizim kalanlar: motor/şanzıman/devir → ses, nitro, speedbreaker, fırlama koruması, devrilme sınırı, otomatik doğrultma,
+  oyuncu için yokuş yardımı (sadece boyuna kuvvet). Eski özel katmanlar (savrulma yardımı, karşı direksiyon,
+  sürtünme çemberi, drift hız koruma) kaldırıldı.
+- Doğrulama: `Tools/physics_sim/RvpSim.cs` (oyundaki `RvpTire` ile): 30/60/100 km/sa tam direksiyon, gaz 0 ve 1.
+  Duraklat menüsünde **Direksiyon hassasiyeti** (0.6–1.6).
 
 ---
 
@@ -258,6 +270,8 @@ Duraklat menüsü → **Grafik: Düşük / Orta / Yüksek / Otomatik**, **FPS he
 - Araçlar: "Car Asset Pack for Arcade & Demolition Racing Games" — **Store InvoGames** (Fab, Standard License)
 - Harita: "City 3D Model" — **Optic Idealist** (Fab/Sketchfab), **CC BY 4.0**
 - Oyun kodu, sesler, test şehri: prosedürel (bu proje)
+- Sürüş fiziği (normal): **Randomation Vehicle Physics** — Justin Couch (JustInvoke), MIT — `Assets/ThirdParty/RVP/LICENSE.txt`
+- Sürüş fiziği (drift): **Arcade Car Physics** — Saarg, MIT — `Assets/ThirdParty/ArcadeCarPhysics/LICENSE.md`
 
 ## 7. Dosyalar
 `Assets/Scripts`: `Game` (başlatma, ışık, post, menüler), `Car`/`CarBuilder`/`CarMath` (fizik, model oturtma),

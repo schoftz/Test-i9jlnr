@@ -392,10 +392,10 @@ namespace MostWanted
             {
                 surfaceTimer = 0.25f;
                 pGravel = 0f;
-                WheelHit h;
-                if (car.wheels[2] != null && car.wheels[2].GetGroundHit(out h) && h.collider != null)
+                Collider gc = car.WheelGroundCollider(2);
+                if (gc != null)
                 {
-                    string n = h.collider.name.ToLowerInvariant();
+                    string n = gc.name.ToLowerInvariant();
                     bool asphalt = n.Contains("street") || n.Contains("otoyol") || n.Contains("yol") || n.Contains("kavsak") || n.Contains("object") || n.Contains("curb") || n.Contains("concrete") || n.Contains("pavement");
                     pGravel = asphalt ? 0f : Mathf.Clamp01(kmh / 80f);
                 }
@@ -406,8 +406,7 @@ namespace MostWanted
             if (isPlayer)
                 for (int i = 0; i < 4; i++)
                 {
-                    WheelHit h;
-                    float force = car.wheels[i] != null && car.wheels[i].GetGroundHit(out h) ? h.force : 0f;
+                    float force = car.WheelLoad(i);
                     if (force - lastForce[i] > car.rb.mass * 15f && thumpCd <= 0f && kmh > 25f)
                     {
                         thumpCd = 0.6f;

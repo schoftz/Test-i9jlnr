@@ -630,6 +630,8 @@ namespace MostWanted
             l.Add("Most Wanted (Unity) — prosedürel oyun kodu, sesler ve test şehri");
             l.Add("Araç paketi: \"Car Asset Pack for Arcade & Demolition Racing Games\" — Store InvoGames (Fab, Standard License)");
             l.Add("Harita: \"City 3D Model\" — Optic Idealist (Fab), CC BY 4.0 lisansı");
+            l.Add("Sürüş fiziği: Randomation Vehicle Physics — Justin Couch (JustInvoke), MIT Lisansı");
+            l.Add("Drift fiziği: Arcade Car Physics — Saarg, MIT Lisansı");
             var reg = Resources.Load<CarRegistry>("CarRegistry");
             if (reg != null) foreach (var c in reg.cars) if (!string.IsNullOrEmpty(c.credit)) l.Add(c.displayName + ": " + c.credit);
             var mreg = Resources.Load<MapRegistry>("MapRegistry");

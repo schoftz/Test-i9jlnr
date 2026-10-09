@@ -1,13 +1,18 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
+using RVP;
+using VehicleBehaviour;
 
 namespace MostWanted
 {
     /// <summary>
-    /// Arcade-sim araç fiziği (NFS MW 2005 hissi): otomatik/manuel şanzıman, tork eğrisi, devir kesici,
-    /// nitro, el freni drift'i, güç ile savrulma (sürtünme çemberi), karşı direksiyon yardımı,
-    /// devrilme önleme (alçak ağırlık merkezi, kuvvet uygulama noktası, viraj demiri, otomatik doğrultma).
+    /// Araç kontrolcüsü. İki fizik modu (araç başına aynı anda yalnızca biri aktif):
+    ///  • Normal (tüm araçlar, trafik, polis, yarışçılar): Randomation Vehicle Physics (MIT) — ışın-izli süspansiyon,
+    ///    RVP lastik eğrileri (yanal/boyuna kayma + kayma bağımlılığı), RVP direksiyon eğrisi, TCS/ABS, RVP savrulma yardımı.
+    ///  • Drift (Drift Araçları + drift ayarı açık): Saarg Arcade Car Physics (MIT) — WheelCollider, Saarg sürtünme eğrileri,
+    ///    el freni = arka yanal sertlik düşer, drift kuvveti/torku, downforce.
+    /// Motor/şanzıman/devir (ses kancaları), nitro, speedbreaker, devrilme/fırlama korumaları bizim.
     /// </summary>
     public class CarController : MonoBehaviour
     {
@@ -19,13 +24,18 @@ namespace MostWanted
         // ---- Tanım ----
         [System.NonSerialized] public CarEntry def;
         public int[] tune = new int[Catalog.TuneCount];
-        public float peakTorque, redline, topSpeed, finalDrive, dragK, grip = 1f, brakeTorque, downforceK, maxSteer = 38f;
+        public float peakTorque, redline, topSpeed, finalDrive, dragK, grip = 1f, brakeTorque, downforceK, maxSteer = 40f;
         public float steerSens = 1f;   // oyuncu: direksiyon hassasiyeti (0.6–1.6)
         public float nitroCap = 1f, nitroPower = 1f, shiftTime = 0.28f, antiRoll, wheelRadius = 0.34f, wheelBase = 2.6f;
         public int drive = 1;
         [System.NonSerialized] public float[] ratios = CarMath.MakeRatios(6);
-        public float stabilityAssist = 0.45f;
+        public float stabilityAssist = 0.45f;   // RVP driftSpinAssist ölçeği
         public float comHeight = 0.42f;
+
+        // ---- Fizik modu ----
+        public bool driftMode;                  // true: Saarg (WheelCollider), false: RVP
+        public float driftLock = 57f;           // drift ayarı direksiyon açısı
+        public const float SuspensionTravel = 0.18f;
 
         // ---- Durum ----
         public int gear = 1;
@@ -42,7 +52,10 @@ namespace MostWanted
         public bool braking;
 
         public Rigidbody rb;
-        public WheelCollider[] wheels = new WheelCollider[4]; // FL FR RL RR
+        public Transform[] wheelAnchor = new Transform[4];          // FL FR RL RR — süspansiyon üst noktası
+        public float[] wheelRadii = { 0.34f, 0.34f, 0.34f, 0.34f };
+        public WheelCollider[] wheels = new WheelCollider[4];        // yalnızca drift modunda dolu
+        [System.NonSerialized] public RvpWheel[] rvp = new RvpWheel[4]; // yalnızca normal modda dolu
         public Transform[] wheelVis = new Transform[4];
         public List<Material> paintMats = new List<Material>();
         public List<Material> brakeMats = new List<Material>();
@@ -61,13 +74,68 @@ namespace MostWanted
         float curSteer, uprightTimer, shiftTimer, limiterT;
         Vector3 lastVel; bool hasLastVel; int burstCount;
         float sinceShift = 1f;
-        float handbrakeBlend;
+        float handbrakeBlend, liftBlend;
+        float suspK, suspC;
+
+        // tekerlek ışınları: ikon/detay katmanlarını yok say
+        static int WheelMask { get { return ~((1 << 30) | (1 << 28) | (1 << 2)); } }
 
         public bool TiresBlown { get { return spikeTimer > 0f; } }
         public bool Shifting { get { return shiftTimer > 0f; } }
         public float SpeedKmh { get { return U.Vel(rb).magnitude * 3.6f; } }
         public float ForwardSpeed { get { return Vector3.Dot(U.Vel(rb), transform.forward); } }
         public float Rpm01 { get { return Mathf.Clamp01(rpm / redline); } }
+        public float SteerDeg { get { return curSteer; } }
+
+        // ---- tekerlek sorguları (iki mod için ortak; ses/efekt kodu bunları kullanır) ----
+        public bool WheelGrounded(int i)
+        {
+            if (driftMode) return wheels[i] != null && wheels[i].isGrounded;
+            return rvp[i] != null && rvp[i].grounded;
+        }
+        public Collider WheelGroundCollider(int i)
+        {
+            if (driftMode) { WheelHit h; return wheels[i] != null && wheels[i].GetGroundHit(out h) ? h.collider : null; }
+            return rvp[i] != null && rvp[i].grounded ? rvp[i].hit.collider : null;
+        }
+        public float WheelLoad(int i)
+        {
+            if (driftMode) { WheelHit h; return wheels[i] != null && wheels[i].GetGroundHit(out h) ? h.force : 0f; }
+            return rvp[i] != null ? rvp[i].load : 0f;
+        }
+
+        /// <summary>Fizik modunu kur/değiştir. Eski moddaki tekerlek bileşenleri tamamen kaldırılır (tek kontrolcü).</summary>
+        public void SetPhysicsMode(bool drift)
+        {
+            driftMode = drift;
+            for (int i = 0; i < 4; i++)
+            {
+                if (wheelAnchor[i] == null) continue;
+                var old = wheelAnchor[i].GetComponent<WheelCollider>();
+                if (!drift && old != null) Object.DestroyImmediate(old);
+                wheels[i] = null; rvp[i] = null;
+                if (drift)
+                {
+                    var wc = old != null ? old : wheelAnchor[i].gameObject.AddComponent<WheelCollider>();
+                    wc.radius = wheelRadii[i];
+                    wc.mass = 22f;
+                    wc.suspensionDistance = SuspensionTravel;
+                    wc.center = Vector3.zero;
+                    wc.forceAppPointDistance = Mathf.Max(0.05f, comHeight - 0.08f);
+                    wc.wheelDampingRate = 0.4f;
+                    wc.forwardFriction = ArcadeDrift.Forward(2f);
+                    wc.sidewaysFriction = ArcadeDrift.Sideways(2f);
+                    if (i == 0) wc.ConfigureVehicleSubsteps(5f, 12, 15);
+                    wc.motorTorque = 0.0001f;
+                    wheels[i] = wc;
+                }
+                else
+                {
+                    rvp[i] = new RvpWheel { anchor = wheelAnchor[i], vis = wheelVis[i], radius = wheelRadii[i], suspensionDistance = SuspensionTravel, steered = i < 2 };
+                }
+            }
+            if (rb != null && def != null) ApplySuspension();
+        }
 
         public void Configure(CarEntry d, int[] t)
         {
@@ -89,16 +157,26 @@ namespace MostWanted
             ratios = CarMath.MakeRatios(d.gears > 0 ? d.gears : 6);
             finalDrive = CarMath.FinalDrive(topSpeed, redline, wheelRadius, ratios);
             dragK = CarMath.DragCoef(peakTorque, topSpeed, redline, wheelRadius, ratios);
+            ApplySuspension();
+        }
 
-            // süspansiyon: ~1.7 Hz, %40 sönüm
+        void ApplySuspension()
+        {
+            // ~1.7 Hz, %42 sönüm
+            float m = rb.mass;
             float corner = m / 4f;
             float freq = 1.7f + 0.1f * tune[(int)Tune.Suspansiyon];
-            float k = corner * Mathf.Pow(2f * Mathf.PI * freq, 2f);
-            float c = 2f * 0.42f * Mathf.Sqrt(k * corner);
-            foreach (var w in wheels)
+            suspK = corner * Mathf.Pow(2f * Mathf.PI * freq, 2f);
+            suspC = 2f * 0.42f * Mathf.Sqrt(suspK * corner);
+            for (int i = 0; i < 4; i++)
             {
-                if (w == null) continue;
-                w.suspensionSpring = new JointSpring { spring = k, damper = c, targetPosition = 0.5f };
+                if (wheels[i] != null) wheels[i].suspensionSpring = new JointSpring { spring = suspK, damper = suspC, targetPosition = 0.5f };
+                if (rvp[i] != null)
+                {
+                    // RVP springForce (ivme): kütle başına k * mesafe → aynı frekans; sönüm oranı RVP springDampening ile
+                    rvp[i].springForce = suspK * SuspensionTravel / m;           // a = k·x / m (yük = a · m)
+                    rvp[i].springDampening = suspC / (m * rvp[i].springForce);   // a_sönüm = c·v / m
+                }
             }
         }
 
@@ -128,6 +206,8 @@ namespace MostWanted
         void FixedUpdate()
         {
             if (rb == null || rb.isKinematic) return;
+            if (!driftMode && rvp[0] == null) return;
+            if (driftMode && wheels[0] == null) return;
             float dt = Time.fixedDeltaTime;
             Vector3 v = U.Vel(rb);
             // PhysX itme patlaması koruması: tek adımda anormal hız artışı/fırlama → geri al
@@ -138,7 +218,7 @@ namespace MostWanted
                 {
                     v = new Vector3(lastVel.x, Mathf.Min(lastVel.y, 0f), lastVel.z);
                     U.SetVel(rb, v);
-                    Vector3 av0 = rb.angularVelocity; rb.angularVelocity = new Vector3(Mathf.Clamp(av0.x, -1f, 1f), av0.y, Mathf.Clamp(av0.z, -1f, 1f));   // savrulmaya dokunma
+                    Vector3 av0 = rb.angularVelocity; rb.angularVelocity = new Vector3(Mathf.Clamp(av0.x, -1f, 1f), av0.y, Mathf.Clamp(av0.z, -1f, 1f));
                     burstCount++;
                     if (burstCount < 5) Debug.LogWarning("[MW] Fizik patlaması engellendi: " + name);
                 }
@@ -149,54 +229,65 @@ namespace MostWanted
             if (spikeTimer > 0f) spikeTimer -= dt;
             if (shiftTimer > 0f) shiftTimer -= dt;
 
+            Vector3 lv = transform.InverseTransformDirection(v);
+            slipAngle = kmh > 12f && lv.z > 0.5f ? Mathf.Atan2(lv.x, lv.z) * Mathf.Rad2Deg : 0f;
+            driftAmount = kmh > 40f ? Mathf.Abs(slipAngle) : 0f;
+            handbrakeBlend = Mathf.MoveTowards(handbrakeBlend, handbrake ? 1f : 0f, dt * (handbrake ? 6f : 1.6f));
+            float g = grip * gripBoost * (TiresBlown ? 0.5f : 1f);
+
             if (locked || disabled)
             {
-                for (int i = 0; i < 4; i++) { wheels[i].motorTorque = 0f; wheels[i].brakeTorque = brakeTorque * 3f; }
-                // geri sayımda gaz -> devir (burnout hazırlığı)
                 rpm = Mathf.Lerp(rpm, CarMath.IdleRpm + Mathf.Max(0f, throttle) * (redline * 0.85f - CarMath.IdleRpm), dt * 6f);
                 nitroActive = false;
+                if (driftMode)
+                    for (int i = 0; i < 4; i++) { wheels[i].motorTorque = 0f; wheels[i].brakeTorque = brakeTorque * 3f; }
+                else
+                    RvpStep(dt, kmh, fwd, lv, 0f, 0f, true, g);
                 UpdateEffects(kmh, 0f);
                 return;
             }
 
-            Vector3 lv = transform.InverseTransformDirection(v);
-            slipAngle = kmh > 12f && lv.z > 0.5f ? Mathf.Atan2(lv.x, lv.z) * Mathf.Rad2Deg : 0f;
-            driftAmount = kmh > 40f ? Mathf.Abs(slipAngle) : 0f;
-
             // ---- Direksiyon ----
-            float limit = Mathf.Min(maxSteer * 1.15f, CarMath.SteerLimit(kmh, maxSteer) * steerBoost * steerSens);
-            if (handbrake) limit = Mathf.Max(limit, maxSteer * 0.6f);
-            float target = steer * limit;
-            // karşı direksiyon yardımı
-            // karşı direksiyon: sadece gerçek savrulmada (hızlıyken, kayma > 8°) — düşük hızda dönüşü engellemesin
-            if (kmh > 25f && Mathf.Abs(slipAngle) > 8f) target += Mathf.Clamp((slipAngle - Mathf.Sign(slipAngle) * 8f) * 0.5f, -maxSteer * 0.5f, maxSteer * 0.5f);
-            target = Mathf.Clamp(target, -maxSteer, maxSteer);
-            curSteer = Mathf.MoveTowards(curSteer, target, CarMath.SteerRate(Mathf.Abs(target) < Mathf.Abs(curSteer)) * dt);
-            wheels[0].steerAngle = curSteer;
-            wheels[1].steerAngle = curSteer;
+            float target;
+            if (driftMode)
+            {
+                // Saarg: sabit kilit açısı (drift ayarı 55–60°), kayarken tam açı; düz giderken hızla biraz azalır
+                float lockDeg = driftLock * steerSens * steerBoost;
+                float sc = Mathf.Abs(slipAngle) > 10f || handbrake ? 1f : Mathf.Max(0.3f, RvpTire.SteerCurve(fwd) * 1.4f);
+                target = steer * Mathf.Min(driftLock * 1.05f, lockDeg * sc);
+                curSteer = ArcadeDrift.Steer(curSteer, target, 0.2f, dt);
+            }
+            else
+            {
+                // RVP SteeringControl: steerCurve(hız) * aralık, steerRate lerp — gazdan bağımsız
+                float limit = maxSteer * RvpTire.SteerCurve(fwd) * steerSens * steerBoost;
+                if (handbrake) limit = Mathf.Max(limit, maxSteer * 0.6f);
+                target = Mathf.Clamp(steer * limit, -maxSteer * 1.1f, maxSteer * 1.1f);
+                curSteer = Mathf.Lerp(curSteer, target, RvpTire.SteerLerp(dt));
+            }
 
             // ---- Şanzıman ----
             if (throttle < -0.05f && fwd < 1f && gear > 0) { gear = 0; shiftTimer = 0.2f; }
             if (throttle > 0.05f && gear == 0 && fwd > -1f) { gear = 1; shiftTimer = 0.15f; }
             float speedRpm = CarMath.EngineRpm(fwd, gear, finalDrive, wheelRadius, ratios);
             float wheelRpm = 0f; int nd = 0;
-            for (int i = 0; i < 4; i++) if (IsDriven(i)) { wheelRpm += Mathf.Abs(wheels[i].rpm); nd++; }
+            for (int i = 0; i < 4; i++) if (IsDriven(i)) { wheelRpm += Mathf.Abs(driftMode ? wheels[i].rpm : rvp[i].spinRpm); nd++; }
             wheelRpm = nd > 0 ? wheelRpm / nd : 0f;
             float r = CarMath.GearRatio(gear, ratios);
             float spinRpm = wheelRpm * r * finalDrive;
             float target_rpm = Mathf.Max(speedRpm, Mathf.Min(spinRpm, redline * 1.05f));
-            if (gear == 1 && kmh < 30f) target_rpm = Mathf.Max(target_rpm, CarMath.IdleRpm + Mathf.Abs(throttle) * Mathf.Min(redline * 0.55f, 4300f)); // debriyaj kaydırma: ~3500–4500 rpm
+            if (gear == 1 && kmh < 30f) target_rpm = Mathf.Max(target_rpm, CarMath.IdleRpm + Mathf.Abs(throttle) * Mathf.Min(redline * 0.55f, 4300f)); // debriyaj kaydırma
             target_rpm = Mathf.Max(CarMath.IdleRpm, target_rpm);
             rpm = Mathf.Lerp(rpm, Mathf.Min(target_rpm, redline * 1.02f), dt * 12f);
 
             sinceShift += dt;
             if (!manualGearbox && gear > 0 && !Shifting && sinceShift > 0.45f)
             {
-                if (rpm > redline * 0.96f && speedRpm > redline * 0.9f && gear < ratios.Length && throttle > 0.1f && GroundedCount() >= 2) ShiftUp(); // patinaj devriyle erken vites atma
+                if (rpm > redline * 0.96f && speedRpm > redline * 0.9f && gear < ratios.Length && throttle > 0.1f && GroundedCount() >= 2) ShiftUp();
                 else if (gear > 1 && rpm < redline * 0.45f) ShiftDown();
             }
 
-            // ---- Tork ----
+            // ---- Motor torku ----
             float thAbs = Mathf.Abs(throttle);
             float wantDir = gear == 0 ? -1f : 1f;
             bool accelerating = (gear > 0 && throttle > 0.05f) || (gear == 0 && throttle < -0.05f);
@@ -206,20 +297,10 @@ namespace MostWanted
             {
                 engT = peakTorque * CarMath.TorqueCurve(rpm / redline) * thAbs;
                 if (gear == 1) engT *= CarMath.LaunchAssist(kmh);
-                // çekiş kontrolü: biraz patinaja izin ver, fazlasında torku kıs
-                float spin = 0f; int dn = 0;
-                for (int wi = 0; wi < 4; wi++)
-                {
-                    if (!IsDriven(wi)) continue;
-                    WheelHit wh;
-                    if (wheels[wi].GetGroundHit(out wh)) { spin += Mathf.Abs(wh.forwardSlip); dn++; }
-                }
-                if (dn > 0 && spin / dn > 0.6f && !handbrake) engT *= Mathf.Lerp(1f, 0.7f, Mathf.Clamp01((spin / dn - 0.6f) / 0.6f));
                 if (revLimiter) { limiterT += dt; if (Mathf.Repeat(limiterT, 0.1f) < 0.05f) engT = 0f; }
                 if (gear == 0 && kmh > 40f) engT = 0f;
             }
             float topNow = topSpeed * (TiresBlown ? 0.55f : 1f);
-
             nitroActive = nitroInput && nitro > 0.01f && throttle > 0.1f && gear > 0 && !handbrake;
             if (nitroActive)
             {
@@ -227,79 +308,37 @@ namespace MostWanted
                 engT *= 1f + 0.35f * nitroPower;
                 topNow *= 1.12f;
             }
-
             float wheelT = engT * r * finalDrive * CarMath.Efficiency * wantDir;
             if (kmh > topNow) wheelT = 0f;
-            float fShare = drive == 0 ? 0.5f : drive == 1 ? 0f : 0.2f;   // 4x4: %40 ön
-            float rShare = drive == 0 ? 0f : drive == 1 ? 0.5f : 0.3f;
-            wheels[0].motorTorque = wheels[1].motorTorque = wheelT * fShare;
-            wheels[2].motorTorque = wheels[3].motorTorque = wheelT * rShare;
 
-            // ---- Fren ----
+            // ---- Fren talebi (tork) ----
             float brk = 0f;
             braking = false;
             if (gear > 0 && throttle < -0.05f && fwd > 1f) { brk = brakeTorque * -throttle; braking = true; }
             if (gear == 0 && throttle > 0.05f && fwd < -1f) { brk = brakeTorque * throttle; braking = true; }
             if (thAbs < 0.05f) brk = brakeTorque * 0.04f; // motor freni
-            wheels[0].brakeTorque = wheels[1].brakeTorque = brk * 1.2f;
-            wheels[2].brakeTorque = wheels[3].brakeTorque = brk * 0.8f;
-            if (handbrake)
-            {
-                wheels[2].brakeTorque = wheels[3].brakeTorque = brakeTorque * 1.6f;
-                wheels[2].motorTorque = wheels[3].motorTorque = 0f;
-            }
 
-            // ---- Sürtünme (el freni drift + sürtünme çemberi) ----
-            handbrakeBlend = Mathf.MoveTowards(handbrakeBlend, handbrake ? 1f : 0f, dt * (handbrake ? 6f : 1.6f));
-            float g = grip * gripBoost * (TiresBlown ? 0.5f : 1f);
-            for (int i = 0; i < 4; i++)
-            {
-                float side = CarMath.SideStiffness(i < 2, kmh) * g;
-                if (i >= 2) side *= Mathf.Lerp(1f, 0.42f, handbrakeBlend);
-                WheelHit hit;
-                if (wheels[i].GetGroundHit(out hit))
-                {
-                    float fs = Mathf.Abs(hit.forwardSlip);
-                    if (fs > 0.35f) side *= Mathf.Clamp(1f - (fs - 0.35f) * 0.9f, 0.45f, 1f); // patinajda yanal tutuş düşer -> güçle savrulma
-                }
-                var sf = wheels[i].sidewaysFriction; sf.stiffness = side; wheels[i].sidewaysFriction = sf;
-                var ff = wheels[i].forwardFriction; ff.stiffness = 1.5f * g; wheels[i].forwardFriction = ff;
-            }
+            if (driftMode) ArcadeStep(dt, kmh, fwd, wheelT, brk, g);
+            else RvpStep(dt, kmh, fwd, lv, wheelT, brk, false, g);
 
             int grounded = GroundedCount();
             if (grounded > 0)
             {
-                // downforce & aerodinamik sürükleme & yuvarlanma direnci
+                // aerodinamik: downforce, sürükleme, yuvarlanma direnci
                 rb.AddForce(-transform.up * downforceK * v.sqrMagnitude);
                 Vector3 flat = U.Flat(v);
                 rb.AddForce(-flat.normalized * dragK * flat.sqrMagnitude);
                 if (flat.sqrMagnitude > 0.25f) rb.AddForce(-flat.normalized * rb.mass * CarMath.RollingDecel);
                 if (nitroActive) rb.AddForce(transform.forward * rb.mass * 2.6f * nitroPower);
-                // yokuş yardımı (oyuncu): yokuş yukarı gazdayken eğim kuvvetinin bir kısmını telafi et
+                // yokuş yardımı (oyuncu, sadece boyuna — direksiyona karışmaz)
                 if (isPlayer && throttle > 0.1f && gear > 0 && transform.forward.y > 0.01f)
                     rb.AddForce(transform.forward * rb.mass * CarMath.Gravity * transform.forward.y * CarMath.HillAssist(kmh));
-
-                // drift'te hız koru (arcade)
-                if (Mathf.Abs(slipAngle) > 10f && throttle > 0.1f && kmh > 35f)
-                    rb.AddForce(transform.forward * rb.mass * 2.2f * Mathf.Sin(Mathf.Abs(slipAngle) * Mathf.Deg2Rad));
-                // el freninde dönüş yardımı
-                if (handbrake && kmh > 25f) rb.AddTorque(Vector3.up * steer * rb.mass * 1.4f);
-
-                // arcade dönüş yardımı: girdi varken dönüşe yardım eder, girdi yokken aşırı savrulmayı sönümler
-                if (!handbrake)
-                {
-                    float tq = CarMath.YawAssistTorque(fwd, curSteer, rb.angularVelocity.y, wheelBase, rb.inertiaTensor.y, steer, 1.3f * g);
-                    if (tq != 0f) rb.AddTorque(Vector3.up * tq * (stabilityAssist / 0.45f));
-                }
             }
             else
             {
                 Vector3 av = rb.angularVelocity;
                 rb.angularVelocity = new Vector3(av.x * 0.96f, av.y, av.z * 0.96f);
             }
-
-            AntiRoll(0, 1);
-            AntiRoll(2, 3);
 
             // aşırı yatmayı sınırla
             float roll = Vector3.SignedAngle(Vector3.ProjectOnPlane(Vector3.up, transform.forward), transform.up, transform.forward);
@@ -321,12 +360,93 @@ namespace MostWanted
             UpdateEffects(kmh, Mathf.Abs(slipAngle));
         }
 
+        /// <summary>Normal mod: Randomation Vehicle Physics tekerlekleri.</summary>
+        void RvpStep(float dt, float kmh, float fwd, Vector3 lv, float wheelT, float brk, bool hold, float g)
+        {
+            // temas + ortalama zemin normali (RVP VehicleParent.norm)
+            Vector3 nAvg = Vector3.zero; int gc = 0;
+            for (int i = 0; i < 4; i++)
+            {
+                rvp[i].GetContact(transform, WheelMask);
+                if (rvp[i].grounded) { nAvg += rvp[i].hit.normal; gc++; }
+            }
+            nAvg = gc > 0 ? nAvg.normalized : transform.up;
+            for (int i = 0; i < 4; i++) rvp[i].ApplySuspension(rb, nAvg, dt);
+            AntiRollRvp(0, 1); AntiRollRvp(2, 3);
+
+            float m = rb.mass;
+            float mu = 1.05f * g;
+            float fShare = drive == 0 ? 0.5f : drive == 1 ? 0f : 0.2f;   // 4x4: %40 ön
+            float rShare = drive == 0 ? 0f : drive == 1 ? 0.5f : 0.3f;
+            // gazı bırakınca hafif ağırlık transferi → çok hafif lift-off oversteer
+            liftBlend = Mathf.MoveTowards(liftBlend, Mathf.Abs(throttle) < 0.05f && kmh > 40f && !hold ? 1f : 0f, dt * 3f);
+            bool tcs = kmh > 15f || hold;   // kalkışta biraz patinaja izin ver
+            float forceH = Mathf.Max(0.05f, comHeight - 0.08f);
+            for (int i = 0; i < 4; i++)
+            {
+                var w = rvp[i];
+                w.steerDeg = i < 2 ? curSteer : 0f;
+                bool front = i < 2;
+                float drv = wheelT * (front ? fShare : rShare) / wheelRadius / m;
+                float bAcc = hold ? 12f : brk * (front ? 1.2f : 0.8f) / wheelRadius / m;
+                float spin = -1f;
+                float sideMul = front ? 1f + 0.05f * liftBlend : 1.15f - 0.04f * liftBlend;   // arka biraz daha tutucu: kararlı, gaz bırakınca hafif oversteer
+                if (!front && handbrake && !hold)
+                {
+                    spin = 1f;           // kilitli arka teker (RVP ebrake)
+                    drv = 0f;
+                    sideMul *= Mathf.Lerp(1f, 0.75f, handbrakeBlend);
+                }
+                w.ApplyFriction(rb, transform, mu, sideMul, drv, bAcc, tcs, spin, forceH, dt);
+            }
+
+            // RVP VehicleAssist: savrulma yardımı (sadece kayarken etkin) — gazdan bağımsız
+            if (gc > 0 && !hold)
+            {
+                float yawAcc = RvpTire.SpinAssist(steer, fwd, lv.x, rb.angularVelocity.y, 2.2f, 1.6f * stabilityAssist / 0.45f, curSteer, wheelBase, mu);
+                rb.AddTorque(transform.up * yawAcc, ForceMode.Acceleration);
+            }
+        }
+
+        /// <summary>Drift modu: Saarg Arcade Car Physics (WheelCollider).</summary>
+        void ArcadeStep(float dt, float kmh, float fwd, float wheelT, float brk, float g)
+        {
+            for (int i = 0; i < 2; i++) wheels[i].steerAngle = curSteer;
+            // drift ayarı: AWD'de arka ağırlıklı (%15 ön), RWD aynen; kilitli diferansiyel (eşit tork = LSD)
+            float fShare = drive == 0 ? 0.5f : drive == 1 ? 0f : 0.075f;
+            float rShare = drive == 0 ? 0f : drive == 1 ? 0.5f : 0.425f;
+            for (int i = 0; i < 4; i++) { wheels[i].motorTorque = 0.0001f; wheels[i].brakeTorque = 0f; }
+            wheels[0].motorTorque = wheels[1].motorTorque = Mathf.Max(0.0001f, Mathf.Abs(wheelT * fShare)) * Mathf.Sign(wheelT == 0f ? 1f : wheelT);
+            wheels[2].motorTorque = wheels[3].motorTorque = Mathf.Max(0.0001f, Mathf.Abs(wheelT * rShare)) * Mathf.Sign(wheelT == 0f ? 1f : wheelT);
+            wheels[0].brakeTorque = wheels[1].brakeTorque = brk * 1.2f;
+            wheels[2].brakeTorque = wheels[3].brakeTorque = brk * 0.8f;
+            if (handbrake)
+            {
+                wheels[2].brakeTorque = wheels[3].brakeTorque = brakeTorque * 1.2f;
+                wheels[2].motorTorque = wheels[3].motorTorque = 0.0001f;
+            }
+            // Saarg sürtünme: ön 2.0, arka düşük (drift ayarı), el freninde arka yanal daha da düşer
+            float rearSide = Mathf.Lerp(1.45f, 0.85f, handbrakeBlend);
+            for (int i = 0; i < 4; i++)
+            {
+                wheels[i].forwardFriction = ArcadeDrift.Forward(2f * g);
+                wheels[i].sidewaysFriction = ArcadeDrift.Sideways((i < 2 ? 2f : rearSide) * g);
+            }
+            AntiRoll(0, 1); AntiRoll(2, 3);
+            if (GroundedCount() >= 2)
+            {
+                bool drift = (handbrake && kmh > 36f) || (Mathf.Abs(slipAngle) > 10f && throttle > 0.3f && kmh > 36f);
+                if (drift) ArcadeDrift.Apply(rb, transform, Mathf.Max(0f, fwd) * 3.6f, Mathf.Max(0.3f, throttle), curSteer, driftLock, 0.6f, dt);
+                ArcadeDrift.Downforce(rb, transform, Mathf.Abs(fwd) * 3.6f, 1f);
+            }
+        }
+
         bool IsDriven(int i) { return drive == 2 || (drive == 0 ? i < 2 : i >= 2); }
 
         int GroundedCount()
         {
             int n = 0;
-            for (int i = 0; i < 4; i++) if (wheels[i].isGrounded) n++;
+            for (int i = 0; i < 4; i++) if (WheelGrounded(i)) n++;
             return n;
         }
 
@@ -343,6 +463,15 @@ namespace MostWanted
             if (gl) rb.AddForceAtPosition(wl.transform.up * -force, wl.transform.position);
             if (gr) rb.AddForceAtPosition(wr.transform.up * force, wr.transform.position);
         }
+
+        void AntiRollRvp(int l, int r)
+        {
+            var wl = rvp[l]; var wr = rvp[r];
+            float force = (wl.compression - wr.compression) * antiRoll;
+            if (wl.grounded) rb.AddForceAtPosition(wl.anchor.up * -force, wl.anchor.position);
+            if (wr.grounded) rb.AddForceAtPosition(wr.anchor.up * force, wr.anchor.position);
+        }
+
 
         public void Unflip()
         {
@@ -361,6 +490,7 @@ namespace MostWanted
             if (!k) { U.SetVel(rb, Vector3.zero); rb.angularVelocity = Vector3.zero; }
             hasLastVel = false;
             gear = 1; rpm = CarMath.IdleRpm;
+            for (int i = 0; i < 4; i++) if (rvp[i] != null) { rvp[i].frictionForce = Vector3.zero; rvp[i].travelDist = 1f; }
         }
 
         public void SetSpeed(float kmh)
@@ -380,7 +510,7 @@ namespace MostWanted
                 if (on) f.localScale = electric ? new Vector3(flameBaseScale.x, flameBaseScale.y * Random.Range(0.8f, 1.6f), flameBaseScale.z) : new Vector3(0.13f, 0.13f, Random.Range(0.5f, 0.95f));
             }
             // lastik dumanı
-            bool burn = (gear == 1 && throttle > 0.8f && kmh < 30f && peakTorque > 300f && GroundedCount() >= 2 && !locked);
+            bool burn = (gear == 1 && throttle > 0.8f && kmh < 15f && peakTorque > 300f && GroundedCount() >= 2 && !locked);
             bool smokeOn = (slip > 14f && kmh > 30f) || (handbrake && kmh > 25f) || burn;
             for (int i = 0; i < smoke.Length; i++)
             {
@@ -394,6 +524,7 @@ namespace MostWanted
         {
             for (int i = 0; i < 4; i++)
             {
+                if (rvp[i] != null) { rvp[i].UpdateVisual(transform, Time.deltaTime); continue; }
                 if (wheels[i] == null || wheelVis[i] == null) continue;
                 Vector3 p; Quaternion q;
                 wheels[i].GetWorldPose(out p, out q);

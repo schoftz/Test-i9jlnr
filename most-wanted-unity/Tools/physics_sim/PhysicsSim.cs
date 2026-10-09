@@ -1,5 +1,5 @@
 // Headless fizik testi: oyundaki CarMath ile 1B hızlanma + devrilme kontrolü.
-// Derleme: mcs PhysicsSim.cs ../../Assets/Scripts/CarMath.cs && mono PhysicsSim.exe
+// Derleme: mcs PhysicsSim.cs ../../Assets/Scripts/CarMath.cs ../../Assets/ThirdParty/RVP/RvpTire.cs && mono PhysicsSim.exe
 using System; using MostWanted;
 class PhysicsSim {
   struct Car { public string n; public float m, tq, red, top; public int drive; public float grip, track, com; }
@@ -33,9 +33,9 @@ class PhysicsSim {
       // devrilme: max yanal ivme = tutuş(1.4*grip) g; kuvvet uygulama noktası COM-0.08 m
       float lat = 1.4f * c.grip * 9.81f, com = 0.36f, app = com - 0.08f;
       float inner = CarMath.InnerWheelLoadRatio(c.m, lat, com, app, c.track, 0.3f);
-      float steer13 = CarMath.SteerLimit(13, 32);
+      float steer13 = RVP.RvpTire.SteerCurve(13f / 3.6f) * 40f;
       Console.WriteLine("{0,-14} {1,8:0.0} {2,9:0} {3,9:0.0}° {4,9:0.00}g {5,10:0.00}", c.n, t100, v * 3.6f, steer13, lat / 9.81f, inner);
     }
-    Console.WriteLine("Direksiyon sınırı: 0→{0:0.0}°, 60→{1:0.0}°, 150→{2:0.0}°, 250→{3:0.0}°", CarMath.SteerLimit(0,32), CarMath.SteerLimit(60,32), CarMath.SteerLimit(150,32), CarMath.SteerLimit(250,32));
+    Console.WriteLine("Direksiyon sınırı: 0→{0:0.0}°, 60→{1:0.0}°, 150→{2:0.0}°, 250→{3:0.0}°", RVP.RvpTire.SteerCurve(0f/3.6f)*40f, RVP.RvpTire.SteerCurve(60f/3.6f)*40f, RVP.RvpTire.SteerCurve(150f/3.6f)*40f, RVP.RvpTire.SteerCurve(250f/3.6f)*40f);
   }
 }
