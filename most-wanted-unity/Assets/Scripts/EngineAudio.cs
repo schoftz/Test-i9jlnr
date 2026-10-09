@@ -172,10 +172,9 @@ namespace MostWanted
         /// <summary>Motor karakteri: tip + araç başına küçük farklar (formant, düzensizlik, emme, egzoz).</summary>
         void ConfigureCharacter(CarEntry def)
         {
-            string t = def != null && !string.IsNullOrEmpty(def.engineType) ? def.engineType.ToUpperInvariant() : "";
-            // garajdan seçilen motor sesi (kozmetik)
-            var save = def != null && isPlayer ? SaveSystem.Get(def.id) : null;
-            if (save != null && !string.IsNullOrEmpty(save.engineSound)) t = save.engineSound;
+            // motor/egzoz sesi satın alınmaz: önce gerçek araca göre (ad), sonra katalog motor tipi, sonra güç verisi
+            string t = EngineByName(def);
+            if (t == "" && def != null && !string.IsNullOrEmpty(def.engineType)) t = def.engineType.ToUpperInvariant();
             if (t == "" && def != null)
             {
                 if (def.redlineRpm >= 8400f) t = "V10";
@@ -263,8 +262,8 @@ namespace MostWanted
             jitter *= 1f + r2 * 0.6f;
             intakeAmt *= 1f + r3 * 0.6f;
             // "Egzoz" performans paketi: daha yüksek ses, daha çok patlama
-            exhaustLevel = car != null && car.tune != null && car.tune.Length > (int)Tune.Egzoz ? car.tune[(int)Tune.Egzoz] : 0;
-            exhaustGain = 1f + 0.22f * exhaustLevel;
+            exhaustLevel = ExhaustClass(def, engineType);
+            exhaustGain = 1f + 0.18f * exhaustLevel;
             popChance = Mathf.Clamp01(popChance * 0.3f * (1f + 0.3f * exhaustLevel));   // seyrek: patlamalar nadir olsun
         }
 
@@ -678,6 +677,42 @@ namespace MostWanted
 
         /// <summary>Patlama: perdesi düşen kalın "thud" (70–120 Hz, 40–90 ms) + çıtırtı (300–3000 Hz, 15–40 ms).
         /// Gaz kesince 2–4'lü "bap-bap-brrap" dizileri; sonuncusu uzun hırıltılı.</summary>
+        /// <summary>Gerçek araca göre motor tipi (ses karakteri). Bilinmiyorsa "".</summary>
+        public static string EngineByName(CarEntry def)
+        {
+            if (def == null) return "";
+            string n = (" " + def.displayName + " " + def.id + " ").ToLowerInvariant();
+            System.Func<string[], bool> any = ks => { foreach (var k in ks) if (n.Contains(k)) return true; return false; };
+            if (any(new[] { "tesla", "taycan", "rimac", "e-tron gt", "ioniq", "model s", "model 3" })) return "EV";
+            if (any(new[] { "bugatti", "chiron", "veyron" })) return "W16";
+            if (any(new[] { "rx-7", "rx7", "rx-8", "rx8", "787b" })) return "ROTARY";
+            if (any(new[] { "aventador", "revuelto", "812", "f12", "pagani", "zonda", "huayra", "valkyrie", "db11 v12", "vanquish", "sf90", "lfa" }))
+                return n.Contains("lfa") ? "V10" : "V12";
+            if (any(new[] { "huracan", "huracán", "gallardo", " r8", "carrera gt", "m5 e60", "viper" })) return "V10";
+            if (any(new[] { "mustang", "camaro", "challenger", "charger", "corvette", "amg gt", "c63", "e63", "m5", "m8", "rs6", "rs7", "f8", "488", "458", "296", "roma", "720s", "750s", "p1", "senna", "gt500", "hellcat", "f-150", "ford gt", "vantage", "dbs", "cts-v", "escalade" }))
+                return any(new[] { "458", "f8", "488", "720s", "750s", "senna", "p1", "gt500", "ford gt" }) ? "V8FP" : "V8";
+            if (any(new[] { "911", "cayman", "boxster", "porsche" })) return "F6";
+            if (any(new[] { "wrx", "impreza", "sti", "brz", "gt86", "gr86", "subaru" })) return "F4";
+            if (any(new[] { "gt-r", "gtr", "r35", "nsx", "370z", "350z", "400z", " z " })) return "V6";
+            if (any(new[] { "supra", "r34", "r33", "r32", "skyline", " m2", " m3", " m4", "bmw", "z4" })) return "I6";
+            if (any(new[] { "rs3", "tt rs", "ttrs", "quattro" })) return "I5";
+            if (any(new[] { "yaris", "gr yaris", "i8", "fiesta" })) return "I3";
+            if (any(new[] { "civic", "type r", "golf", "gti", "focus", "evo", "lancer", "mini", "cooper", "megane", "i30", "a45", "corolla", "s2000", "miata", "mx-5", "integra" })) return "I4";
+            return "";
+        }
+
+        /// <summary>Aracın egzoz sınıfı (satın alınmaz): 0 sessiz/ekonomik, 1 spor, 2 süper, 3 hiper/yarış.
+        /// Fiyat sınıfı + motor tipi: V8/V10/V12/W16 ve rotary bir kademe daha gürültülü, dizel/elektrik 0.</summary>
+        public static int ExhaustClass(CarEntry def, string eng)
+        {
+            if (def == null) return 0;
+            string e = (eng ?? "").ToUpperInvariant();
+            if (e == "EV" || e.Contains("DIESEL")) return 0;
+            int lv = def.price < 40000 ? 0 : def.price < 110000 ? 1 : def.price < 400000 ? 2 : 3;
+            if (e.StartsWith("V8") || e.StartsWith("V10") || e.StartsWith("V12") || e.StartsWith("W16") || e.Contains("ROTARY") || e.StartsWith("R2") || e.StartsWith("R3")) lv++;
+            return Mathf.Clamp(lv, 0, 3);
+        }
+
         /// <summary>Egzoz patlamaları (geri tepme) tamamen kapalı (kullanıcı isteği).</summary>
         public const bool PopsEnabled = false;
 

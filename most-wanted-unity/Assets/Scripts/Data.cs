@@ -15,6 +15,8 @@ namespace MostWanted
 
         public static readonly string[] TuneNames = { "Motor", "Turbo", "Şanzıman", "Süspansiyon", "Lastikler", "Nitro", "Frenler", "Egzoz" };
         public const int TuneCount = 8;
+        /// <summary>Mağazada satılan performans parçaları (Egzoz satılmaz: her aracın egzoz sesi kendi sınıfına göre sabit).</summary>
+        public const int ShopTuneCount = 7;
         public const int MaxTune = 3;
         public const int PaintCost = 500;
 

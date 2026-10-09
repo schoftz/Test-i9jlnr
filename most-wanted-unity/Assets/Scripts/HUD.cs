@@ -705,18 +705,8 @@ namespace MostWanted
                 if (sv.color >= 0 && GUILayout.Button("Fabrika rengine dön (ücretsiz)", btn)) { sv.color = -1; SaveSystem.Save(); g.Toast("Fabrika rengi — garajdan çıkınca uygulanır"); }
                 if (GUI.tooltip != "") GUILayout.Label(GUI.tooltip, small);
 
-                // Motor sesi (kozmetik)
-                GUILayout.BeginHorizontal();
-                string curEng = string.IsNullOrEmpty(sv.engineSound) ? "Orijinal" : EngineAudio.EngineNames[Mathf.Max(0, System.Array.IndexOf(EngineAudio.EngineTypes, sv.engineSound))];
-                GUILayout.Label("Motor Sesi: " + curEng + "  (" + U.Money(1000) + ")", small, GUILayout.Width(360));
-                GUI.enabled = d.money >= 1000;
-                if (GUILayout.Button("◀", btn, GUILayout.Width(50))) SwapEngine(g, spec, sv, -1);
-                if (GUILayout.Button("▶", btn, GUILayout.Width(50))) SwapEngine(g, spec, sv, 1);
-                GUI.enabled = true;
-                if (!string.IsNullOrEmpty(sv.engineSound) && GUILayout.Button("Orijinal", btn, GUILayout.Width(110))) { sv.engineSound = ""; SaveSystem.Save(); RefreshEngine(g, spec); }
-                GUILayout.EndHorizontal();
                 GUILayout.Label("Performans Paketleri", small);
-                for (int k = 0; k < Catalog.TuneCount; k++) TuneRow(g, spec, sv, k);
+                for (int k = 0; k < Catalog.ShopTuneCount; k++) TuneRow(g, spec, sv, k);
             }
             GUILayout.FlexibleSpace();
             if (GUILayout.Button("Garajdan Çık (E / Esc)", btn)) g.CloseMenu();

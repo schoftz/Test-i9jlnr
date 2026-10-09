@@ -229,7 +229,6 @@ namespace MostWanted
                     if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)) BuyOrSelect(def, sv);
                     if (owned && Input.GetKeyDown(KeyCode.P)) OpenPaint(sv);
                     if (owned && Input.GetKeyDown(KeyCode.U)) { screen = Screen.Perf; perfSel = 0; }
-                    if (owned && Input.GetKeyDown(KeyCode.S)) OpenSound(sv);
                     if (owned && drift && Input.GetKeyDown(KeyCode.C)) OpenCustom(sv);
                     if (owned && Input.GetKeyDown(KeyCode.Delete)) Sell(def, sv);
                     if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.E)) Game.I.CloseMenu();
@@ -241,8 +240,8 @@ namespace MostWanted
                     if (Input.GetKeyDown(KeyCode.Escape)) { screen = Screen.Main; ShowCar(sel); }
                     break;
                 case Screen.Perf:
-                    if (Input.GetKeyDown(KeyCode.UpArrow)) perfSel = (perfSel - 1 + Catalog.TuneCount) % Catalog.TuneCount;
-                    if (Input.GetKeyDown(KeyCode.DownArrow)) perfSel = (perfSel + 1) % Catalog.TuneCount;
+                    if (Input.GetKeyDown(KeyCode.UpArrow)) perfSel = (perfSel - 1 + Catalog.ShopTuneCount) % Catalog.ShopTuneCount;
+                    if (Input.GetKeyDown(KeyCode.DownArrow)) perfSel = (perfSel + 1) % Catalog.ShopTuneCount;
                     if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)) BuyTune(def, sv, perfSel);
                     if (Input.GetKeyDown(KeyCode.Escape)) screen = Screen.Main;
                     break;
@@ -594,7 +593,7 @@ namespace MostWanted
 
             // ipuçları
             string hint = screen == Screen.Main
-                ? "Geri (Esc)  •  Seç (Enter)  •  Boya (P)  •  Performans (U)  •  Motor Sesi (S)" + (drift ? "  •  Özelleştir (C)" : "") + "  •  Sat (Del)  •  Fotoğraf (F12)  •  ←/→ araç  •  Fare: döndür / yakınlaştır"
+                ? "Geri (Esc)  •  Seç (Enter)  •  Boya (P)  •  Performans (U)" + (drift ? "  •  Özelleştir (C)" : "") + "  •  Sat (Del)  •  Fotoğraf (F12)  •  ←/→ araç  •  Fare: döndür / yakınlaştır"
                 : screen == Screen.Perf ? "Geri (Esc)  •  ↑/↓ kategori  •  Yükselt (Enter)"
                 : screen == Screen.Custom ? "Geri (Esc)  •  ↑/↓ kategori  •  ←/→ seçenek (canlı önizleme)  •  Uygula/Satın Al (Enter)"
                 : "Geri (Esc)  •  ←/→ seç  •  Satın Al (Enter)";
@@ -626,9 +625,9 @@ namespace MostWanted
 
         void DrawPerf(float W, float H, CarEntry def, CarSave sv)
         {
-            Rect r = new Rect(40, 140, 640, 60 + Catalog.TuneCount * 52);
+            Rect r = new Rect(40, 140, 640, 60 + Catalog.ShopTuneCount * 52);
             Panel(r);
-            for (int k = 0; k < Catalog.TuneCount; k++)
+            for (int k = 0; k < Catalog.ShopTuneCount; k++)
             {
                 float y = r.y + 24 + k * 52;
                 if (k == perfSel) Box(new Rect(r.x + 10, y - 4, r.width - 20, 46), new Color(Teal.r, Teal.g, Teal.b, 0.18f));
