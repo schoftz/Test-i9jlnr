@@ -60,7 +60,7 @@ namespace MostWanted
         public readonly List<float> toastTimes = new List<float>();
         public static readonly string[] QualityNames = { "Düşük", "Orta", "Yüksek" };
 
-        public bool InputBlocked { get { return menu != Menu.None || (race != null && race.Counting && !race.IsDrag); } }
+        public bool InputBlocked { get { return menu != Menu.None || (race != null && race.Counting && !race.IsDrag) || StoryManager.Cinematic; } }
         public bool NearGarage { get { return player != null && world != null && U.FlatDist(player.transform.position, world.garagePos) < 12f; } }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -205,6 +205,7 @@ namespace MostWanted
         public void WelcomeToast()
         {
             Toast("Most Wanted'a hoş geldin! Garaj: E  •  İşler: J  •  Kara Liste: B  •  Harita: M");
+            StoryManager.OnEnterWorld(this);   // Story/StoryManager.cs
         }
 
         void CleanupWorldRoot()
@@ -496,6 +497,7 @@ namespace MostWanted
         void HandleKeys()
         {
             if (menu == Menu.Garage || menu == Menu.Title) return;   // garaj / başlık ekranı kendi tuşlarını işler
+            if (StoryManager.Cinematic) return;                     // ara sahne / hikaye seçimi kendi tuşlarını işler
             if (Input.GetKeyDown(KeyCode.Escape))
             {
                 if (menu == Menu.None) OpenMenu(Menu.Pause);

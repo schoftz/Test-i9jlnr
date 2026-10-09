@@ -135,6 +135,7 @@ namespace MostWanted
         public int driveStyle = 0;                // 0 MW Sürüş (varsayılan), 1 Arcade (RVP + yardımlar), 2 Gerçekçi (RVP)                // 0 Kolay, 1 Normal, 2 Zor
         public bool speedLines = true;           // direksiyon hassasiyeti 0.6–1.6  // Unity 6 GPU Resident Drawer (Keep All ayarı gerekir)
         public float[] volumes = { 1f, 1f, 0.6f, 0.8f }; // Motor, Efekt, Müzik, Siren
+        public StorySave story = new StorySave();  // hikaye modu (Story/StoryData.cs)
     }
 
     public static class SaveSystem
@@ -153,6 +154,8 @@ namespace MostWanted
             if (Data == null) Data = new SaveData();
             if (Data.cars == null) Data.cars = new List<CarSave>();
             if (Data.milestones == null) Data.milestones = new List<string>();
+            if (Data.story == null) Data.story = new StorySave();
+            if (Data.story.msgs == null) Data.story.msgs = new List<string>();
             foreach (var e in Catalog.Garage)
             {
                 var cs = Get(e.id);

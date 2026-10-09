@@ -86,7 +86,7 @@ namespace MostWanted
             float W = Screen.width / scale, H = RefH;
             GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(scale, scale, 1f));
 
-            if ((g.menu == Game.Menu.None || g.menu == Game.Menu.Pause) && !TitleScreen.Active) DrawHUD(g, W, H);   // başlık ekranından açılan ayarlarda HUD yok
+            if ((g.menu == Game.Menu.None || g.menu == Game.Menu.Pause) && !TitleScreen.Active && !StoryManager.Cinematic) DrawHUD(g, W, H);   // başlık ekranından açılan ayarlarda HUD yok
             switch (g.menu)
             {
                 case Game.Menu.Pause: case Game.Menu.Credits: PauseMenu.Get().Draw(g); break;   // UI/PauseMenu.cs
@@ -95,7 +95,7 @@ namespace MostWanted
                 case Game.Menu.Blacklist: DrawBlacklist(g, W, H); break;
                 case Game.Menu.Map: DrawMap(g, W, H); break;
             }
-            if (g.menu == Game.Menu.None || g.menu == Game.Menu.Pause || g.menu == Game.Menu.Credits) Toasts.Draw(g);   // UI/Toasts.cs
+            if ((g.menu == Game.Menu.None || g.menu == Game.Menu.Pause || g.menu == Game.Menu.Credits) && !Cutscene.Active) Toasts.Draw(g);   // UI/Toasts.cs
             GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(scale, scale, 1f));
             if (g.showFps && g.opt != null)
             {

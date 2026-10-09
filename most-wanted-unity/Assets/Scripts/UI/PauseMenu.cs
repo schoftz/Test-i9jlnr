@@ -22,8 +22,8 @@ namespace MostWanted
             return inst;
         }
 
-        enum Page { Overview = 0, Map = 1, Career = 2, Settings = 3, Credits = 4, Save = 5, Quit = 6 }
-        static readonly string[] Items = { "DEVAM ET", "HARİTA", "KARİYER", "AYARLAR", "EMEĞİ GEÇENLER", "KAYDET", "ÇIKIŞ" };
+        enum Page { Overview = 0, Map = 1, Career = 2, Settings = 3, Credits = 4, Story = 5, Messages = 6, Save = 7, Quit = 8 }
+        static readonly string[] Items = { "DEVAM ET", "HARİTA", "KARİYER", "AYARLAR", "EMEĞİ GEÇENLER", "HİKAYE", "MESAJLAR", "KAYDET", "ÇIKIŞ" };
         static readonly string[] Tabs = { "GRAFİK", "SES", "SÜRÜŞ", "HARİTA", "KONTROLLER" };
 
         int cursor, page, tab;
@@ -98,7 +98,7 @@ namespace MostWanted
             int dir = 0;
             if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.W)) dir = -1;
             if (Input.GetKeyDown(KeyCode.DownArrow) || Input.GetKeyDown(KeyCode.S)) dir = 1;
-            if (dir != 0) { cursor = (cursor + dir + Items.Length) % Items.Length; Snd(false, 0.15f); if (cursor <= (int)Page.Credits) SetPage(g, cursor); }
+            if (dir != 0) { cursor = (cursor + dir + Items.Length) % Items.Length; Snd(false, 0.15f); if (cursor <= (int)Page.Messages) SetPage(g, cursor); }
             if (page == (int)Page.Settings)
             {
                 if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.A)) { tab = (tab + Tabs.Length - 1) % Tabs.Length; Snd(false, 0.15f); }
@@ -331,17 +331,17 @@ namespace MostWanted
             for (int i = 0; i < Items.Length; i++)
             {
                 float x = MenuX + sl, y = MenuY + i * (ItemH + ItemGap);
-                if (i == 5) y += 30;  // KAYDET / ÇIKIŞ ayrı grup
-                if (i == 5) UIKit.Fill(x, y - 22, MenuW - 60, 1, new Color(1, 1, 1, 0.15f));
+                if (i >= (int)Page.Save) y += 30;  // KAYDET / ÇIKIŞ ayrı grup
+                if (i == (int)Page.Save) UIKit.Fill(x, y - 22, MenuW - 60, 1, new Color(1, 1, 1, 0.15f));
                 bool hov = UIKit.Hit(x, y, MenuW, ItemH);
                 bool sel = i == cursor;
-                bool act = i == page && i <= (int)Page.Credits;
+                bool act = i == page && i <= (int)Page.Messages;
                 float t = UIKit.Anim("mi" + i, sel ? 1f : 0f, 9f);
                 float h = UIKit.Anim("mh" + i, hov ? 1f : 0f, 12f);
                 if (h > 0f) UIKit.Bar(x, y, MenuW, ItemH, new Color(UIKit.Teal.r, UIKit.Teal.g, UIKit.Teal.b, 0.16f * h));
                 if (t > 0f) UIKit.Bar(x, y, MenuW * (0.35f + 0.65f * t), ItemH, new Color(UIKit.Teal.r, UIKit.Teal.g, UIKit.Teal.b, t));
                 if (act && !sel) UIKit.Fill(x - 14, y + 8, 5, ItemH - 16, UIKit.Teal);
-                Color tc = t > 0.5f ? UIKit.Dark : i == 6 ? new Color(1f, 0.75f, 0.72f) : Color.white;
+                Color tc = t > 0.5f ? UIKit.Dark : i == (int)Page.Quit ? new Color(1f, 0.75f, 0.72f) : Color.white;
                 UIKit.Text(x + 30 + 10 * t, y, MenuW - 60, ItemH, Items[i], 32, tc, TextAnchor.MiddleLeft, true, t <= 0.5f);
                 if (sel) UIKit.Tex(UIKit.R(x + MenuW - 76, y + ItemH / 2 - 12, 48, 24), UIKit.ChevronTex, new Color(0.02f, 0.05f, 0.07f, 0.8f));
                 if (hov && UIKit.Rep && hoverIdx != i) { hoverIdx = i; Snd(false, 0.1f); }
@@ -374,6 +374,8 @@ namespace MostWanted
                 case Page.Career: DrawCareer(g, x); break;
                 case Page.Settings: DrawSettings(g, x); break;
                 case Page.Credits: DrawCredits(g, x); break;
+                case Page.Story: StoryHud.DrawStoryPage(g, x, PY + 110, PW, PH - 140); break;       // Story/StoryHud.cs
+                case Page.Messages: StoryHud.DrawMessagesPage(g, x, PY + 110, PW, PH - 160); break;
                 default: DrawOverview(g, x); break;
             }
         }

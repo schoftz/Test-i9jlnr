@@ -13,11 +13,11 @@ namespace MostWanted
 
         public static readonly Rival[] Rivals =
         {
-            new Rival { rank = 5, name = "Kobra",  races = 2,  bounty = 10000,  milestones = 1, skill = 0.92f, raceIndex = 0, prize = 20000 },
-            new Rival { rank = 4, name = "Gölge",  races = 4,  bounty = 30000,  milestones = 2, skill = 0.96f, raceIndex = 1, prize = 35000 },
-            new Rival { rank = 3, name = "Baron",  races = 6,  bounty = 70000,  milestones = 3, skill = 1.0f,  raceIndex = 6, prize = 50000 },
-            new Rival { rank = 2, name = "Duman",  races = 8,  bounty = 130000, milestones = 5, skill = 1.04f, raceIndex = 3, prize = 80000 },
-            new Rival { rank = 1, name = "Kral",   races = 10, bounty = 250000, milestones = 7, skill = 1.08f, raceIndex = 2, prize = 120000 },
+            new Rival { rank = 5, name = "Tilki",   races = 2,  bounty = 10000,  milestones = 1, skill = 0.92f, raceIndex = 0, prize = 20000 },
+            new Rival { rank = 4, name = "Balyoz",  races = 4,  bounty = 30000,  milestones = 2, skill = 0.96f, raceIndex = 1, prize = 35000 },
+            new Rival { rank = 3, name = "Sessiz",  races = 6,  bounty = 70000,  milestones = 3, skill = 1.0f,  raceIndex = 6, prize = 50000 },
+            new Rival { rank = 2, name = "Neon",    races = 8,  bounty = 130000, milestones = 5, skill = 1.04f, raceIndex = 3, prize = 80000 },
+            new Rival { rank = 1, name = "Kartal",  races = 10, bounty = 250000, milestones = 7, skill = 1.08f, raceIndex = 2, prize = 120000 },
         };
 
         public class Milestone { public string id, text; }
@@ -46,6 +46,8 @@ namespace MostWanted
             var d = SaveSystem.Data;
             var r = Rivals[i];
             why = "";
+            bool storyCan;
+            if (StoryManager.OverridesChallenge(i, out storyCan, out why)) return storyCan;   // hikaye modu kendi kuralını uygular
             if (i != NextRival) { why = i < NextRival ? "Yenildi" : "Önce sıradaki rakibi yen"; return false; }
             var list = new List<string>();
             if (d.racesWon < r.races) list.Add("Yarış " + d.racesWon + "/" + r.races);
@@ -55,17 +57,31 @@ namespace MostWanted
             return list.Count == 0;
         }
 
+        /// <summary>Rakibin imza aracı (Story/StoryData.Rivals); katalogda yoksa fiyat sırasına göre yedek.</summary>
         public CarEntry RivalCar(int i)
         {
+            if (i >= 0 && i < StoryData.Rivals.Length)
+            {
+                var sc = StoryData.FindCar(StoryData.Rivals[i].carId, StoryData.Rivals[i].carHint);
+                if (sc != null) return sc;
+            }
             var g = Catalog.Garage;
             int idx = Mathf.Clamp(g.Count - 1 - (Rivals[i].rank - 1), 0, g.Count - 1);
             return g[idx];
+        }
+
+        /// <summary>Rakibin imza boyası.</summary>
+        public static PaintDef RivalPaint(int i)
+        {
+            if (i < 0 || i >= StoryData.Rivals.Length) return Catalog.Paints[(i * 5 + 3 + Catalog.Paints.Length * 4) % Catalog.Paints.Length];
+            return StoryData.Paint(StoryData.Rivals[i].paint, StoryData.Rivals[i].color);
         }
 
         public void Challenge(int i)
         {
             string why;
             if (!CanChallenge(i, out why)) { Game.I.Toast("Henüz meydan okuyamazsın: " + why); return; }
+            if (StoryManager.Enabled) { StoryManager.StartBossRace(i); return; }
             var races = Game.I.world.races;
             if (races.Count == 0) return;
             var def = races[Mathf.Clamp(Rivals[i].raceIndex, 0, races.Count - 1)];
@@ -84,8 +100,10 @@ namespace MostWanted
             bool got = false;
             if (cs != null && !cs.owned) { cs.owned = true; got = true; }
             SaveSystem.AddMoney(r.prize);
-            Game.I.Toast("#" + r.rank + " " + r.name + " YENİLDİ! +" + U.Money(r.prize) + (got ? "  Araç kazanıldı: " + car.displayName : ""));
+            Game.I.Toast("#" + r.rank + " " + r.name + " YENİLDİ! +" + U.Money(r.prize) + (got ? "  Araç kazanıldı: " + car.displayName : cs != null && cs.owned ? "  (" + car.displayName + " zaten garajında)" : ""));
             if (i == Rivals.Length - 1) Game.I.Toast("ŞEHRİN EN ARANAN SÜRÜCÜSÜ SENSİN!");
+            SaveSystem.Save();
+            StoryManager.OnRivalBeaten(i);
         }
 
         public void OnPursuitTick(PoliceManager p)

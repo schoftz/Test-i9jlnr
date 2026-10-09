@@ -144,7 +144,7 @@ namespace MostWanted
                     nm = names[i];
                     skill = 0.86f + i * 0.04f;
                 }
-                var car = CarFactory.Build(spec, Catalog.Paints[(i * 5 + 3) % Catalog.Paints.Length], slots[si], rot, CarRole.Racer, SaveSystem.Get(SaveSystem.Data.selected) != null ? SaveSystem.Get(SaveSystem.Data.selected).tune : null, "Yarisci_" + nm);
+                var car = CarFactory.Build(spec, rival >= 0 ? Career.RivalPaint(rival) : Catalog.Paints[(i * 5 + 3) % Catalog.Paints.Length], slots[si], rot, CarRole.Racer, SaveSystem.Get(SaveSystem.Data.selected) != null ? SaveSystem.Get(SaveSystem.Data.selected).tune : null, "Yarisci_" + nm);
                 EngineAudio.Attach(car, false);
                 var rd = car.gameObject.AddComponent<RacerDriver>();
                 rd.skill = skill;
@@ -412,7 +412,8 @@ namespace MostWanted
             if (def.type == RaceType.Tollbooth) place = 1;
             int prize = place == 1 ? def.prize : place == 2 ? def.prize * 2 / 5 : place == 3 ? def.prize / 7 : 0;
             var g = Game.I;
-            if (rivalIndex >= 0)
+            if (StoryManager.OnRaceResult(def, rivalIndex, place)) { }   // hikaye (prolog) sonucu kendisi işledi
+            else if (rivalIndex >= 0)
             {
                 if (place == 1) g.career.RivalBeaten(rivalIndex);
                 else g.Toast("Kara liste rakibini yenemedin. Tekrar dene!");
