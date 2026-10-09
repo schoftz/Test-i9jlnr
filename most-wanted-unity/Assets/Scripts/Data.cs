@@ -128,7 +128,7 @@ namespace MostWanted
         public bool wet = false;
         public bool dressing = true;
         public bool gpuResidentDrawer = false;
-        public float steerSens = 1f;
+        public float steerSens = 1.2f;
         public int policeDiff = 0;                // 0 Kolay, 1 Normal, 2 Zor
         public bool speedLines = true;           // direksiyon hassasiyeti 0.6–1.6  // Unity 6 GPU Resident Drawer (Keep All ayarı gerekir)
         public float[] volumes = { 1f, 1f, 0.6f, 0.8f }; // Motor, Efekt, Müzik, Siren

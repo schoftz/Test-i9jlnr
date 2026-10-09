@@ -136,7 +136,7 @@ Duraklat → **Polis zorluğu**: Kolay (varsayılan) / Normal / Zor.
 - **Normal mod — Randomation Vehicle Physics (RVP, JustInvoke, MIT)** — tüm araçlar, trafik, polis, rakipler.
   `Assets/ThirdParty/RVP`: ışın-izli süspansiyon (RVP `Suspension`), RVP lastik eğrileri ve kayma hesabı
   (`Wheel.GetSlip/ApplyFriction`, yanal kayma = yanal hız × 0.1, kayma bağımlılığı), RVP direksiyon eğrisi
-  (0 m/s → %100, 30 m/s → %20, 40° aralık, steerRate lerp), TCS/ABS (talep eğrinin tepesinde kırpılır), RVP savrulma
+  (arcade: 0 km/s %100, 50 → %75, 100 → %55, 150 → %38, 200+ → %30; 40° aralık; tam kilit 0.12 sn, merkeze 0.08 sn; hassasiyet hem açıyı hem hızı ölçekler, varsayılan 1.2), yanal tutuş tepe ×1.40, düz eğri kuyruğu, savrulma denetimi yalnızca gerçek oversteer'de, TCS/ABS (talep eğrinin tepesinde kırpılır), RVP savrulma
   yardımı (yalnızca kayarken; hedef savrulma tutuş sınırıyla kırpılır → denge kontrolü). Yanal kuvvet **gazdan bağımsız**;
   sadece gerçek patinaj/kilitlenmede düşer. Gaz bırakınca hafif ağırlık transferi → çok hafif lift-off oversteer.
   El freni = arka tekerler kilitlenir (RVP ebrake) → drift.
@@ -148,7 +148,7 @@ Duraklat → **Polis zorluğu**: Kolay (varsayılan) / Normal / Zor.
   oyuncu için yokuş yardımı (sadece boyuna kuvvet). Eski özel katmanlar (savrulma yardımı, karşı direksiyon,
   sürtünme çemberi, drift hız koruma) kaldırıldı.
 - Doğrulama: `Tools/physics_sim/RvpSim.cs` (oyundaki `RvpTire` ile): 30/60/100 km/sa tam direksiyon, gaz 0 ve 1.
-  Duraklat menüsünde **Direksiyon hassasiyeti** (0.6–1.6).
+  Duraklat menüsünde **Direksiyon hassasiyeti** (0.6–2.0).
 
 ---
 

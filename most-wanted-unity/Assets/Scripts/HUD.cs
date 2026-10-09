@@ -563,7 +563,7 @@ namespace MostWanted
             if (GUILayout.Button("Hız çizgileri: " + (d.speedLines ? "Açık" : "Kapalı"), btn)) { d.speedLines = !d.speedLines; SaveSystem.Save(); }
             GUILayout.BeginHorizontal();
             GUILayout.Label("Direksiyon hassasiyeti: " + d.steerSens.ToString("0.00"), small, GUILayout.Width(250));
-            float ns = GUILayout.HorizontalSlider(d.steerSens, 0.6f, 1.6f, GUILayout.Width(320));
+            float ns = GUILayout.HorizontalSlider(d.steerSens, 0.6f, 2.0f, GUILayout.Width(320));
             if (Mathf.Abs(ns - d.steerSens) > 0.001f) d.steerSens = Mathf.Round(ns * 20f) / 20f;
             GUILayout.EndHorizontal();
             for (int i = 0; i < 4; i++)

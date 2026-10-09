@@ -260,11 +260,12 @@ namespace MostWanted
             }
             else
             {
-                // RVP SteeringControl: steerCurve(hız) * aralık, steerRate lerp — gazdan bağımsız
+                // RVP SteeringControl: steerCurve(hız) * aralık — gazdan bağımsız; hızlı tepki (tam kilit 0.12 sn, dönüş 0.08 sn)
                 float limit = maxSteer * RvpTire.SteerCurve(fwd) * steerSens * steerBoost;
                 if (handbrake) limit = Mathf.Max(limit, maxSteer * 0.6f);
                 target = Mathf.Clamp(steer * limit, -maxSteer * 1.1f, maxSteer * 1.1f);
-                curSteer = Mathf.Lerp(curSteer, target, RvpTire.SteerLerp(dt));
+                bool ret = Mathf.Abs(target) < Mathf.Abs(curSteer) || target * curSteer < 0f;
+                curSteer = Mathf.MoveTowards(curSteer, target, RvpTire.SteerRateDeg(maxSteer, ret, Mathf.Max(0.6f, steerSens)) * dt);
             }
 
             // ---- Şanzıman ----
@@ -391,7 +392,8 @@ namespace MostWanted
                 float drv = wheelT * (front ? fShare : rShare) / wheelRadius / m;
                 float bAcc = hold ? 12f : brk * (front ? 1.2f : 0.8f) / wheelRadius / m;
                 float spin = -1f;
-                float sideMul = front ? 1f + 0.05f * liftBlend : 1.15f - 0.04f * liftBlend;   // arka biraz daha tutucu: kararlı, gaz bırakınca hafif oversteer
+                float gF, gR; RvpTire.SideGrip(kmh, out gF, out gR);
+                float sideMul = front ? gF * (1f + 0.05f * liftBlend) : gR * (1f - 0.04f * liftBlend);   // yüksek hızda arka ≥ ön; gaz bırakınca hafif oversteer
                 if (!front && handbrake && !hold)
                 {
                     spin = 1f;           // kilitli arka teker (RVP ebrake)

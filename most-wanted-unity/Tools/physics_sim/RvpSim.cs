@@ -17,7 +17,8 @@ class RvpSim {
     float kmh = (float)Math.Sqrt(s.u * s.u + s.w * s.w) * 3.6f;
     // RVP SteeringControl
     float limit = 40f * RvpTire.SteerCurve(s.u); if (hb) limit = Math.Max(limit, 24f);
-    s.steer += (steerIn * limit - s.steer) * RvpTire.SteerLerp(dt);
+    float tgt = steerIn * limit; bool ret = Math.Abs(tgt) < Math.Abs(s.steer);
+    float stp = RvpTire.SteerRateDeg(40f, ret, 1f) * dt; s.steer += Math.Max(-stp, Math.Min(stp, tgt - s.steer));
     // şanzıman (basit otomatik)
     float rpm = CarMath.EngineRpm(s.u, s.gear, fd, rW, ratios);
     if (rpm > redline * 0.96f && s.gear < ratios.Length) s.gear++;
@@ -49,7 +50,7 @@ class RvpSim {
       float fwdSlip = spin >= 0 ? spin : ratio <= 1 ? ratio * 0.2013f : 0.2013f + (ratio - 1) * 0.8f;
       float Fx = Math.Sign(req) * Math.Min(Math.Abs(req), RvpTire.FwdCurve(fwdSlip) * peak);
       if (spin >= 0) Fx = -Math.Sign(vx) * Math.Min(Math.Abs(vx) / dt, RvpTire.FwdCurve(fwdSlip) * peak);
-      float sideMul = front ? 1f + 0.05f * lift : 1.15f - 0.04f * lift;   // arka 1.15: kararlılık (oyundaki RvpStep ile aynı)
+      float gF, gR; RvpTire.SideGrip(kmh, out gF, out gR); float sideMul = front ? gF * (1f + 0.05f * lift) : gR * (1f - 0.04f * lift);   // arka 1.15: kararlılık (oyundaki RvpStep ile aynı)
       if (!front && hb) sideMul *= 0.75f;
       float dep = RvpTire.Dependence(1.6f, Math.Max(0f, Math.Min(1f, fwdSlip / 0.2013f - 1f)));
       float Fz = -Math.Sign(vz) * RvpTire.SideCurve(RvpTire.SideSlip(vz)) * peak * sideMul * dep;
