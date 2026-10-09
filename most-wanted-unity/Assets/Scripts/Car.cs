@@ -714,6 +714,17 @@ namespace MostWanted
                 Vector3 av = rb.angularVelocity; rb.angularVelocity = new Vector3(0f, Mathf.Clamp(av.y, -1f, 1f), 0f);
                 return;
             }
+            // oyuncu trafik aracına sürterse/çarparsa savrulmasın: trafik aracı itilir, oyuncu yönünü korur (NFS tarzı)
+            if (isPlayer && c.rigidbody != null && hasLastVel && c.rigidbody.GetComponent<TrafficDriver>() != null)
+            {
+                Vector3 lv0 = new Vector3(lastVel.x, Mathf.Min(lastVel.y, 0f), lastVel.z);
+                float headOn = Vector3.Dot(lv0.normalized, -c.GetContact(0).normal);   // 1 = tam önden
+                U.SetVel(rb, lv0 * Mathf.Lerp(0.92f, 0.6f, Mathf.Clamp01(headOn)));
+                Vector3 av = rb.angularVelocity; rb.angularVelocity = new Vector3(0f, Mathf.Clamp(av.y, -0.8f, 0.8f), 0f);
+                if (!c.rigidbody.isKinematic) c.rigidbody.AddForce(U.Flat(lv0) * 0.5f + Vector3.up * 1.5f, ForceMode.VelocityChange);
+                if (onHit != null) onHit(c);
+                return;
+            }
             if (mw && c.rigidbody != null && !c.rigidbody.isKinematic) mwDynHit = true;
             if (onHit != null) onHit(c);
         }

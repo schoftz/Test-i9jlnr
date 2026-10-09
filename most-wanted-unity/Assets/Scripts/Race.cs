@@ -142,9 +142,7 @@ namespace MostWanted
                 }
                 else
                 {
-                    int my = Catalog.Garage.IndexOf(Catalog.Get(SaveSystem.Data.selected));
-                    int idx = Mathf.Clamp(my + Random.Range(-1, 2), 0, Catalog.Garage.Count - 1);
-                    spec = Catalog.Garage[idx];
+                    spec = MatchedOpponent(Catalog.Get(SaveSystem.Data.selected));
                     nm = names[i];
                     skill = 0.86f + i * 0.04f;
                 }
@@ -187,6 +185,25 @@ namespace MostWanted
             g.rig.Snap();
             string tname = d.type == RaceType.Sprint ? "Sprint" : d.type == RaceType.Circuit ? "Tur" : d.type == RaceType.Speedtrap ? "Hız Kamerası" : d.type == RaceType.Tollbooth ? "Gişe" : "Drag";
             g.Toast(d.name + " (" + tname + ") başlıyor!" + (d.type == RaceType.Drag ? "  Vites: E yukarı, Q aşağı, A/D şerit" : ""));
+        }
+
+        /// <summary>Rakip aracı oyuncunun aracına denk seçer (azami hız/güç/ağırlık puanı yakın, oyuncudan en fazla %4 güçlü).
+        /// Eskiden katalog sırasına göre komşu seçiliyordu → düşük araçla yarışta Bugatti gelebiliyordu.</summary>
+        static CarEntry MatchedOpponent(CarEntry mine)
+        {
+            var list = Catalog.Garage;
+            if (mine == null || list.Count == 0) return list.Count > 0 ? list[0] : null;
+            System.Func<CarEntry, float> score = c => c.topSpeedKmh + 0.25f * (c.torqueNm / Mathf.Max(600f, c.massKg)) * 1000f;
+            float me = score(mine);
+            var pool = new List<CarEntry>();
+            foreach (var c in list) if (c != null && score(c) <= me * 1.04f && score(c) >= me * 0.85f) pool.Add(c);
+            if (pool.Count < 2)
+            {
+                pool.Clear(); pool.AddRange(list);
+                pool.Sort((a, b) => Mathf.Abs(score(a) - me).CompareTo(Mathf.Abs(score(b) - me)));
+                pool.RemoveRange(Mathf.Min(3, pool.Count), pool.Count - Mathf.Min(3, pool.Count));
+            }
+            return pool[Random.Range(0, pool.Count)];
         }
 
         float SegmentTime(int from, int to)
