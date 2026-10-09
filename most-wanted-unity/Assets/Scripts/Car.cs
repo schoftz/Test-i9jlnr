@@ -49,7 +49,8 @@ namespace MostWanted
         public ParticleSystem[] smoke = new ParticleSystem[2];
 
         [System.NonSerialized] public System.Action<Collision> onHit;
-        [System.NonSerialized] public System.Action<int, int> onShift; // vites, kalite (0 normal, 1 iyi, 2 mükemmel)
+        [System.NonSerialized] public System.Action<int, int> onShift;
+        [System.NonSerialized] public System.Action<int, int> onShiftAudio; // vites, kalite (0 normal, 1 iyi, 2 mükemmel)
 
         float curSteer, uprightTimer, shiftTimer, limiterT;
         float[] sideStiff = { 1.4f, 1.4f, 1.35f, 1.35f };
@@ -103,6 +104,7 @@ namespace MostWanted
             shiftTimer = manualGearbox ? (q == 2 ? 0.08f : q == 1 ? 0.18f : 0.35f) : shiftTime;
             if (manualGearbox && q == 2) nitro = Mathf.Min(1f, nitro + 0.08f);
             if (onShift != null) onShift(gear, q);
+            if (onShiftAudio != null) onShiftAudio(gear, q);
         }
 
         public void ShiftDown()
@@ -394,7 +396,7 @@ namespace MostWanted
         Material red, blue;
         Light lr, lb;
         AudioSource siren;
-        float t;
+        float t, modeTimer;
 
         public void Setup(Transform vis, float roofY, bool hidden)
         {
@@ -443,6 +445,14 @@ namespace MostWanted
                 U.SetEmission(red, phase && strobe ? new Color(8f, 0, 0) : Color.black);
                 U.SetEmission(blue, !phase && strobe ? new Color(0, 0.8f, 8f) : Color.black);
                 lr.enabled = phase; lb.enabled = !phase;
+                siren.volume = 0.4f * AudioBus.Get(AudioBus.Bus.Siren);
+                modeTimer -= Time.deltaTime;
+                if (modeTimer <= 0f)
+                {
+                    modeTimer = Random.Range(4f, 9f);
+                    var want = Random.value < 0.35f ? AudioSynth.SirenYelp() : AudioSynth.Siren();
+                    if (siren.clip != want) { siren.clip = want; siren.Play(); }
+                }
                 if (!siren.isPlaying) siren.Play();
             }
             else

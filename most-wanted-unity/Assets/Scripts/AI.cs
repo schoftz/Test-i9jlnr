@@ -348,6 +348,7 @@ namespace MostWanted
             Vector3 look = U.Flat(pp - transform.position);
             if (look.sqrMagnitude > 1f) transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(look.normalized) * Quaternion.Euler(Mathf.Clamp(vel.magnitude * 0.4f, 0, 15f), 0, 0), Time.deltaTime * 1.5f);
             rotor.Rotate(0, 1400f * Time.deltaTime, 0, Space.Self);
+            snd.volume = 0.5f * AudioBus.Get(AudioBus.Bus.Efekt);
             tailRotor.Rotate(2000f * Time.deltaTime, 0, 0, Space.Self);
             spot.transform.LookAt(pp);
             float hd = U.FlatDist(transform.position, pp);

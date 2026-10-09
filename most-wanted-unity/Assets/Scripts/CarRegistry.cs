@@ -21,6 +21,10 @@ namespace MostWanted
         public int drive = 1;
         [Range(0.7f, 1.5f)] public float grip = 1f;
         public float downforce = 1f;
+        [Header("Ses")]
+        [Tooltip("I4, I6, F6, V8, V10 (boşsa tork/devirden tahmin edilir)")]
+        public string engineType = "";
+        public bool turbo = false;
         [Header("Görünüm")]
         public float length = 4.5f;
         public Color defaultColor = new Color(0.8f, 0.1f, 0.1f);

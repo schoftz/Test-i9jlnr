@@ -106,6 +106,7 @@ namespace MostWanted
                     skill = 0.86f + i * 0.04f;
                 }
                 var car = CarFactory.Build(spec, Catalog.Paints[(i * 3 + 2) % Catalog.Paints.Length], slots[si], rot, CarRole.Racer, SaveSystem.Get(SaveSystem.Data.selected) != null ? SaveSystem.Get(SaveSystem.Data.selected).tune : null, "Yarisci_" + nm);
+                EngineAudio.Attach(car, false);
                 var rd = car.gameObject.AddComponent<RacerDriver>();
                 rd.skill = skill;
                 var e = new Entry { car = car, name = nm, ai = rd };

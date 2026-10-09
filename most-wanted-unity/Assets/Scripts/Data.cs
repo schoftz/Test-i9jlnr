@@ -103,6 +103,8 @@ namespace MostWanted
         public int atmosphere = 0;   // 0 Most Wanted, 1 Normal, 2 Gün batımı, 3 Gece
         public bool wet = false;
         public bool dressing = true;
+        public bool gpuResidentDrawer = false;  // Unity 6 GPU Resident Drawer (Keep All ayarı gerekir)
+        public float[] volumes = { 1f, 1f, 0.6f, 0.8f }; // Motor, Efekt, Müzik, Siren
     }
 
     public static class SaveSystem

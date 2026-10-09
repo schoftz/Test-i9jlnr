@@ -1152,10 +1152,11 @@ namespace MostWanted
 
             // uzaktan siren sesi
             sirenTimer -= Time.deltaTime;
+            if (ambience != null) ambience.volume = 0.12f * AudioBus.Get(AudioBus.Bus.Efekt);
             if (sirenTimer <= 0f && ambience != null)
             {
                 sirenTimer = Random.Range(35f, 80f);
-                if (Game.I.police != null && !Game.I.police.pursuit) ambience.PlayOneShot(AudioSynth.Siren(), 0.06f);
+                if (Game.I.police != null && !Game.I.police.pursuit) ambience.PlayOneShot(AudioSynth.Siren(), 0.06f * AudioBus.Get(AudioBus.Bus.Siren));
             }
         }
     }

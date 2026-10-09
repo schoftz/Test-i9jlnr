@@ -35,6 +35,7 @@ namespace MostWanted
         public float baseFixedDelta = 1f / 60f;
         public OptimizationManager opt;
         public MapDressing dressing;
+        public AudioDirector audioDirector;
         public string district = "";
         float districtTimer;
         WhiteBalance whiteBalance;
@@ -87,6 +88,7 @@ namespace MostWanted
         {
             Catalog.Load();
             SaveSystem.Load();
+            AudioBus.Load(SaveSystem.Data);
             sfx = gameObject.AddComponent<AudioSource>();
             sfx.spatialBlend = 0f;
             RenderPipelineManager.beginCameraRendering += OnBeginCam;
@@ -172,6 +174,7 @@ namespace MostWanted
             career = gameObject.AddComponent<Career>();
             hud = gameObject.AddComponent<HUD>();
             opt = gameObject.AddComponent<OptimizationManager>();
+            audioDirector = gameObject.AddComponent<AudioDirector>();
             opt.Init(SaveSystem.Data.quality, SaveSystem.Data.fpsTarget);
             ApplyTimeScale();
             if (world is City) ((City)world).MarkDetailLayers();
@@ -191,7 +194,7 @@ namespace MostWanted
             CloseMenu();
             race.Abort();
             police.EndPursuit(false);
-            foreach (var c in new Component[] { traffic, police, race, delivery, career, hud, opt }) if (c != null) Destroy(c);
+            foreach (var c in new Component[] { traffic, police, race, delivery, career, hud, opt, audioDirector }) if (c != null) Destroy(c);
             breakers.Clear();
             foreach (var go in SceneManager.GetActiveScene().GetRootGameObjects()) Destroy(go);
             player = null;
@@ -355,6 +358,7 @@ namespace MostWanted
                 police.OnPlayerHit(c);
                 if (c.rigidbody != null) playerDriver.MarkTouched(c.rigidbody);
                 if (c.relativeVelocity.magnitude > 8f) rig.Shake(Mathf.Clamp01(c.relativeVelocity.magnitude / 30f));
+                if (playerDriver.engineAudio != null) playerDriver.engineAudio.Impact(c.relativeVelocity.magnitude);
             };
             var hl = new GameObject("Farlar");
             hl.transform.SetParent(player.transform, false);

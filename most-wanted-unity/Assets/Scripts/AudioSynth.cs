@@ -6,7 +6,7 @@ namespace MostWanted
     public static class AudioSynth
     {
         const int Rate = 44100;
-        static AudioClip engine, siren, beep, beepHi, shift, rotor, hum;
+        static AudioClip engine, siren, beep, beepHi, shift, rotor, hum, dc, thump, impact, horn, yelp;
 
         public static AudioClip Engine()
         {
@@ -127,6 +127,76 @@ namespace MostWanted
             hum = AudioClip.Create("SehirUgultusu", n, 1, Rate, false);
             hum.SetData(d, 0);
             return hum;
+        }
+    
+        /// <summary>Sabit 1.0 döngüsü: OnAudioFilterRead sentezi 3B zayıflama/panning'i korusun diye taşıyıcı.</summary>
+        public static AudioClip DcLoop()
+        {
+            if (dc != null) return dc;
+            int n = 4096;
+            var d = new float[n];
+            for (int i = 0; i < n; i++) d[i] = 1f;
+            dc = AudioClip.Create("DC", n, 1, Rate, false);
+            dc.SetData(d, 0);
+            return dc;
+        }
+
+        static AudioClip Burst(string name, float len, float lowHz, float noiseAmt, float decay, int seed)
+        {
+            int n = (int)(Rate * len);
+            var d = new float[n];
+            var rng = new System.Random(seed);
+            float lp = 0f;
+            for (int i = 0; i < n; i++)
+            {
+                float t = (float)i / Rate;
+                float env = Mathf.Exp(-t * decay);
+                float nz = (float)(rng.NextDouble() * 2 - 1);
+                lp += (nz - lp) * 0.15f;
+                d[i] = (Mathf.Sin(2 * Mathf.PI * lowHz * t * (1f - t)) * 0.8f + lp * noiseAmt) * env;
+            }
+            var c = AudioClip.Create(name, n, 1, Rate, false);
+            c.SetData(d, 0);
+            return c;
+        }
+
+        public static AudioClip Thump() { return thump != null ? thump : (thump = Burst("Darbe", 0.25f, 55f, 0.4f, 18f, 21)); }
+        public static AudioClip Impact() { return impact != null ? impact : (impact = Burst("Carpma", 0.6f, 70f, 1.6f, 7f, 22)); }
+
+        /// <summary>İki tonlu korna (döngü).</summary>
+        public static AudioClip Horn()
+        {
+            if (horn != null) return horn;
+            int n = Rate / 2;
+            var d = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                float t = (float)i / Rate;
+                float a = Mathf.Sign(Mathf.Sin(2 * Mathf.PI * 400f * t)) + Mathf.Sign(Mathf.Sin(2 * Mathf.PI * 500f * t));
+                d[i] = a * 0.18f;
+            }
+            horn = AudioClip.Create("Korna", n, 1, Rate, false);
+            horn.SetData(d, 0);
+            return horn;
+        }
+
+        /// <summary>Siren "yelp" (hızlı) modu.</summary>
+        public static AudioClip SirenYelp()
+        {
+            if (yelp != null) return yelp;
+            int n = Rate;
+            var d = new float[n];
+            double phase = 0;
+            for (int i = 0; i < n; i++)
+            {
+                float t = (float)i / Rate;
+                float f = 750f + 550f * Mathf.Repeat(t * 4f, 1f);
+                phase += f / Rate;
+                d[i] = Mathf.Clamp(Mathf.Sin((float)(phase * 2 * System.Math.PI)) * 1.6f, -1f, 1f) * 0.5f;
+            }
+            yelp = AudioClip.Create("SirenYelp", n, 1, Rate, false);
+            yelp.SetData(d, 0);
+            return yelp;
         }
     }
 }

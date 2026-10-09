@@ -81,7 +81,8 @@ namespace MostWanted
             var g = Game.I;
             if (g == null || g.player == null) return;
             if (!init) Init();
-            float scale = Screen.height / RefH;
+            if (Screen.width <= 0 || Screen.height <= 0) return;
+            float scale = Mathf.Max(0.05f, Screen.height / RefH);
             float W = Screen.width / scale, H = RefH;
             GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(scale, scale, 1f));
 
@@ -310,7 +311,8 @@ namespace MostWanted
 
         void DrawPause(Game g, float W, float H)
         {
-            var r = Panel(W, H, 760, 1000, "DURAKLATILDI");
+            if (Event.current.type == EventType.MouseUp) SaveSystem.Save();
+            var r = Panel(W, H, 780, 1060, "DURAKLATILDI");
             GUILayout.BeginArea(new Rect(r.x + 40, r.y + 70, r.width - 80, r.height - 90));
             var d = SaveSystem.Data;
             GUILayout.Label("Para: " + U.Money(d.money) + "   Kazanılan yarış: " + d.racesWon + "   Kaçış: " + d.escapes + "   Yakalanma: " + d.busted, small);
@@ -352,6 +354,7 @@ namespace MostWanted
             GUI.enabled = g.usingImportedMap;
             if (GUILayout.Button("Harita Süsleme: " + (d.dressing ? "Açık" : "Kapalı") + "  (haritayı yeniden yükler)", btn)) { d.dressing = !d.dressing; SaveSystem.Save(); g.SwitchMap(true); }
             GUI.enabled = true;
+            if (GUILayout.Button("GPU Resident Drawer (deneysel): " + (d.gpuResidentDrawer ? "Açık" : "Kapalı"), btn)) { d.gpuResidentDrawer = !d.gpuResidentDrawer; SaveSystem.Save(); g.ApplyQuality(d.quality); }
             if (GUILayout.Button("FPS Göstergesi: " + (g.showFps ? "Açık" : "Kapalı") + " (F)", btn)) g.showFps = !g.showFps;
             GUI.enabled = g.HasImportedMap;
             if (GUILayout.Button("Harita: " + (g.usingImportedMap ? "İthal" : "Test") + (g.HasImportedMap ? "  (değiştir)" : "  (ithal harita yok)"), btn)) g.SwitchMap(!g.usingImportedMap);
@@ -362,6 +365,14 @@ namespace MostWanted
                 g.CloseMenu();
                 g.player.Teleport(g.world.garagePos + Vector3.up * 0.5f, g.world.garageRot);
                 g.rig.Snap();
+            }
+            for (int i = 0; i < 4; i++)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("Ses — " + AudioBus.Names[i] + ": %" + Mathf.RoundToInt(AudioBus.Volumes[i] * 100f), small, GUILayout.Width(250));
+                float v = GUILayout.HorizontalSlider(AudioBus.Volumes[i], 0f, 1f, GUILayout.Width(320));
+                if (Mathf.Abs(v - AudioBus.Volumes[i]) > 0.001f) { AudioBus.Volumes[i] = v; AudioBus.Store(d); }
+                GUILayout.EndHorizontal();
             }
             if (GUILayout.Button("Emeği Geçenler", btn)) g.OpenMenu(Game.Menu.Credits);
             if (GUILayout.Button("Kaydı Sıfırla (Yeni Oyun)", btn))

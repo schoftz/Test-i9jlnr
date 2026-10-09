@@ -114,7 +114,8 @@ namespace MostWanted
                 else { SetEnumProp(a, "upscalingFilter", "Auto"); upscaler = "Yok (%100)"; }
 #if UNITY_6000_0_OR_NEWER
                 // GRD sadece tüm renderer'lar Forward+/Deferred+ ise (aksi halde Unity uyarı verir ve kapatır)
-                bool grdOk = RenderersSupportGRD(a);
+                // Varsayılan kapalı: GRD ayrıca "BatchRendererGroup Variants = Keep All" ister (README'ye bak).
+                bool grdOk = SaveSystem.Data != null && SaveSystem.Data.gpuResidentDrawer && RenderersSupportGRD(a);
                 SetEnumProp(a, "gpuResidentDrawerMode", grdOk ? "InstancedDrawing" : "Disabled");
                 SetProp(a, "gpuResidentDrawerEnableOcclusionCullingInCameras", grdOk && q >= 1);
 #endif

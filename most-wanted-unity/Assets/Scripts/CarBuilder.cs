@@ -464,6 +464,7 @@ namespace MostWanted
                     U.Text3D("POLİS", vis, new Vector3(s * (W / 2 + 0.005f), doorY, bounds.center.z), Quaternion.Euler(0, s < 0 ? 90 : -90, 0), 0.9f, new Color(0.05f, 0.1f, 0.5f));
                 }
             }
+            EngineAudio.Attach(car, false);
             var pl = car.gameObject.AddComponent<PoliceLights>();
             pl.Setup(vis, roofY, under);
             car.health = role == "suv" ? 160f : 100f;

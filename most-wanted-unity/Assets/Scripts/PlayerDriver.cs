@@ -15,7 +15,7 @@ namespace MostWanted
         public bool drafting;
         public float dragLaneX;                  // drag: hedef şerit (yerel yanal ofset)
         float steerSmooth;
-        AudioSource engine, fx;
+        public EngineAudio engineAudio;
         readonly Dictionary<Rigidbody, float> nearTrack = new Dictionary<Rigidbody, float>();
         readonly HashSet<Rigidbody> touched = new HashSet<Rigidbody>();
         readonly Collider[] overlap = new Collider[32];
@@ -26,17 +26,9 @@ namespace MostWanted
         void Awake()
         {
             car = GetComponent<CarController>();
-            engine = gameObject.AddComponent<AudioSource>();
-            engine.clip = AudioSynth.Engine();
-            engine.loop = true;
-            engine.spatialBlend = 0f;
-            engine.volume = 0.3f;
-            engine.Play();
-            fx = gameObject.AddComponent<AudioSource>();
-            fx.spatialBlend = 0f;
+            engineAudio = EngineAudio.Attach(car, true);
             car.onShift = (g, q) =>
             {
-                fx.PlayOneShot(AudioSynth.Shift(), 0.5f);
                 if (car.manualGearbox && q == 2 && Game.I != null) Game.I.Toast("Mükemmel vites!");
                 else if (car.manualGearbox && q == 1 && Game.I != null) Game.I.Toast("İyi vites");
             };
@@ -115,14 +107,8 @@ namespace MostWanted
             Draft(kmh);
             if (nearCooldown > 0f) nearCooldown -= dt;
 
-            // ---- Motor sesi ----
-            float rpm01 = car.Rpm01;
-            float pitch = 0.45f + rpm01 * 1.55f;
-            if (car.revLimiter) pitch += Mathf.Sin(Time.time * 80f) * 0.03f;
-            if (car.Shifting) pitch *= 0.92f;
-            if (speedbreakerOn) pitch *= 0.65f;
-            engine.pitch = Mathf.Lerp(engine.pitch, pitch, dtU * 14f);
-            engine.volume = 0.18f + Mathf.Abs(car.throttle) * 0.2f + (car.nitroActive ? 0.06f : 0f);
+            // ---- Korna ----
+            if (engineAudio != null) engineAudio.Horn(!blocked && Input.GetKey(KeyCode.H));
         }
 
         public void SetSpeedbreaker(bool on)

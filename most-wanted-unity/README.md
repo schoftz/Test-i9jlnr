@@ -63,6 +63,7 @@ Play'e bas. Oyun her şeyi (dünya, araçlar, polis, arayüz) çalışma anında
 | B | Kara Liste |
 | M / Tab | Büyük harita (tekerlek: yakınlaştır, WASD/sürükle: kaydır) |
 | R | Aracı düzelt |
+| H | Korna |
 | F | FPS / performans göstergesi |
 | Esc | Duraklat menüsü |
 | Drag yarışında | E vites ↑, Q vites ↓, A/D şerit değiştir |
@@ -125,6 +126,48 @@ Play'e bas. Oyun her şeyi (dünya, araçlar, polis, arayüz) çalışma anında
 
 ---
 
+## 3c. Ses sistemi (motor sesleri)
+
+**Ses seviyeleri:** Duraklat menüsünde **Motor / Efekt / Müzik / Siren** kaydırıcıları (kaydedilir).
+**Korna:** H. Müzik: `Assets/Resources/Music/` içine `.ogg/.mp3/.wav` koy → karışık sırayla çalar.
+
+### Gerçek motor sesleri ekleme (önerilen)
+Klasör: `Assets/Resources/EngineSounds/<araç_id>/` (araç id'si CarRegistry'de görünür, ör. `car_5`) veya tüm araçlar
+için `Assets/Resources/EngineSounds/default/`. Ortak efektler: `Assets/Resources/EngineSounds/common/`.
+
+| Dosya adı | Ne | Not |
+|---|---|---|
+| `idle.wav` | rölanti döngüsü | ~900 rpm kabul edilir |
+| `1500_on`, `3000_on`, `4500_on`, `6000_on`, `7500_on` | gazda, sabit devir döngüleri | adın başındaki sayı = kaydın devri |
+| `1500_off`, `3000_off`, … | gaz kesik (motor freni) döngüleri | yoksa sadece `_on` kullanılır |
+| `turbo` | turbo ıslığı döngüsü | |
+| `bov` | blow-off "pssh" (tek seferlik) | |
+| `shift` | vites "klonk" | |
+| `pop1`, `pop2`, … | egzoz patlamaları | gaz kesince rastgele |
+| `impact1`, `impact2`, … | çarpma sesleri | |
+| `thump1`, … | süspansiyon darbesi | |
+| `squeal`, `wind`, `gravel`, `nitro` | lastik, rüzgar, çakıl, nitro döngüleri | |
+| `horn` | korna döngüsü | |
+
+- En az 2 devir döngüsü varsa örnek tabanlı mod açılır: en yakın iki devir eşit güçte çapraz geçişle karışır,
+  her biri `güncelDevir / kayıtDevri` ile perdelenir, gaz pedalı on/off kayıtlarını karıştırır.
+- Döngüler kesintisiz (loop) olmalı; Unity'de *Load Type = Decompress On Load* (kısa) veya *Compressed In Memory*.
+- **Ücretsiz kaynaklar:** freesound.org ("engine loop", "car engine rpm", CC0 filtresi), Unity Asset Store'da ücretsiz
+  araç ses paketleri ("Realistic Car Sounds", "Car Engine Sound Pack" vb. — lisansı kontrol et), Fab'daki ücretsiz ses paketleri.
+  Kaynağı ve lisansı CarRegistry'deki `credit` alanına yaz (Emeği Geçenler ekranında görünür).
+
+### Prosedürel yedek (dosya yoksa)
+Silindir ateşleme darbeleri (devir/60 × silindir/2), her darbe gürültü + basınç vuruşu, 3 rezonanslı egzoz
+formantı, krank harmonikleri, emme ve mekanik gürültü. Karakter: **I4** (Hatch, Tuner S), **I6** (Coupe, GT-R,
+Drift Spec), **V8** düzensiz "burble" (Muscle, SUV, Pikap, polis), **V10** (Süper Kanat). Turbo'lu araçlarda ıslık ve
+BOV. Gaz kesince egzoz patlamaları + küçük alev. Lastik sesi (kaymaya göre), rüzgar (hıza göre), çakıl (asfalt dışı),
+nitro tıslaması, süspansiyon darbeleri, çarpma sesleri. CarRegistry'de `engineType` (I4/I6/F6/V8/V10) ve `turbo`
+alanlarıyla değiştirilebilir.
+YZ araçları 3B ses (mesafe zayıflaması, hafif doppler); sadece en yakın 4 YZ motoru çalınır (CPU tasarrufu).
+Polis sireni "wail" ve "yelp" arasında geçiş yapar.
+
+---
+
 ## 4. Performans (MacBook / Retina)
 
 Duraklat menüsü → **Grafik: Düşük / Orta / Yüksek / Otomatik**, **FPS hedefi: 30 (Pil tasarrufu) / 60 / 120 (ProMotion) / Sınırsız**.
@@ -139,7 +182,7 @@ Duraklat menüsü → **Grafik: Düşük / Orta / Yüksek / Otomatik**, **FPS he
 
 - **Otomatik:** 5 sn ortalama FPS < 50 ise ölçeği/ön ayarı düşürür, > 75 ise yükseltir.
 - **F** göstergesi: FPS, kare süresi, CPU/GPU ms, batch, SetPass, üçgen, render ölçeği.
-- MSAA kapalı (FXAA/SMAA), SRP Batcher açık, GPU Resident Drawer (Unity 6) açılmaya çalışılır, uzak trafik fiziği
+- MSAA kapalı (FXAA/SMAA), SRP Batcher açık, GPU Resident Drawer isteğe bağlı, uzak trafik fiziği
   kapatılır (kinematik), minimap 15 fps'de çizilir, ağaç/direk gibi detaylar katman mesafesiyle erken kesilir.
 - **Öneriler:**
   - Gerçek performans için **Build** al: *File → Build Profiles → macOS → Build And Run*. Editör, özellikle Retina
@@ -148,8 +191,8 @@ Duraklat menüsü → **Grafik: Düşük / Orta / Yüksek / Otomatik**, **FPS he
   - **Occlusion Culling** pişir (büyük şehirde ciddi kazanç): harita sahnede açıkken
     *Window → Rendering → Occlusion Culling → Bake*. (Harita çalışma anında yüklendiği için, istersen haritayı
     Main sahnesine sürükleyip statik işaretleyerek pişir.)
-  - GPU Resident Drawer için: *Project Settings → Graphics → BatchRendererGroup Variants = Keep All* ve URP
-    renderer'ında *Rendering Path = Forward+*.
+  - **GPU Resident Drawer** (deneysel, varsayılan kapalı): önce *Project Settings → Graphics → BatchRendererGroup Variants = Keep All*
+    yap (URP renderer'ı otomatik Forward+ yapılır), sonra Duraklat menüsünden aç. Çok sayıda statik mesh'te büyük kazanç sağlar.
 
 ---
 
@@ -171,5 +214,5 @@ Duraklat menüsü → **Grafik: Düşük / Orta / Yüksek / Otomatik**, **FPS he
 `Assets/Scripts`: `Game` (başlatma, ışık, post, menüler), `Car`/`CarBuilder`/`CarMath` (fizik, model oturtma),
 `PlayerDriver` (girdi, speedbreaker, nitro doldurma), `CameraRig`, `AI` (trafik, polis, rakip, helikopter, çivili şerit,
 pursuit breaker), `Police`, `Race`, `Career` (kara liste), `City` (test şehri), `World`/`BakedWorld` (harita, yol ağı),
-`OptimizationManager`, `MapDressing` (harita süsleme), `HUD`, `AudioSynth`, `Data`/`CarRegistry`/`MapRegistry`.
+`OptimizationManager`, `EngineAudio` (motor sesi, ses grupları, müzik), `MapDressing` (harita süsleme), `HUD`, `AudioSynth`, `Data`/`CarRegistry`/`MapRegistry`.
 `Assets/Shaders`: su ve bulut shader'ları. `Assets/Editor/MWSetup.cs`: URP kurulumu + araç/harita tarama. `Tools/physics_sim`: fizik testi. `Tools/map_bake`: yol ağı üretimi.

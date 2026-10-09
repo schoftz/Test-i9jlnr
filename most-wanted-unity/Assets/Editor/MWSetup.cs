@@ -112,22 +112,22 @@ namespace MostWanted.EditorTools
         // ------------------------------------------------------------------ Arabalar
         struct Preset
         {
-            public string name; public int price, drive; public float mass, torque, redline, top, grip, down, length; public string police; public bool traffic; public Color color;
+            public string name; public int price, drive; public float mass, torque, redline, top, grip, down, length; public string police; public bool traffic; public Color color; public string eng; public bool turbo;
         }
 
         // InvoGames paketi için Most Wanted tarzı isimler ve değerler (Car N -> değerler)
         static readonly Dictionary<string, Preset> Presets = new Dictionary<string, Preset>
         {
-            { "car 3",  new Preset { name = "Kompakt Hatch", price = 0,      drive = 0, mass = 1200, torque = 260, redline = 6800, top = 205, grip = 1.00f, down = 0.8f, length = 4.1f,  traffic = true, color = new Color(0.9f,0.9f,0.9f) } },
-            { "car 10", new Preset { name = "Sokak Coupe",   price = 15000,  drive = 1, mass = 1300, torque = 330, redline = 7200, top = 225, grip = 1.00f, down = 0.9f, length = 4.3f,  traffic = true, color = new Color(0.08f,0.2f,0.75f) } },
-            { "car 1",  new Preset { name = "Tuner S",       price = 26000,  drive = 2, mass = 1350, torque = 400, redline = 7800, top = 245, grip = 1.05f, down = 1.0f, length = 4.4f,  traffic = true, color = new Color(0.95f,0.7f,0.05f) } },
-            { "car 4",  new Preset { name = "Coupe RS",      price = 38000,  drive = 1, mass = 1380, torque = 450, redline = 7500, top = 255, grip = 1.06f, down = 1.0f, length = 4.45f, traffic = true, police = "patrol", color = new Color(0.75f,0.04f,0.04f) } },
-            { "car 7",  new Preset { name = "Bulldog SUV",   price = 42000,  drive = 2, mass = 2100, torque = 650, redline = 6200, top = 235, grip = 0.95f, down = 0.7f, length = 4.9f,  traffic = true, police = "suv", color = new Color(0.55f,0.57f,0.6f) } },
-            { "car 9",  new Preset { name = "Titan Pikap",   price = 46000,  drive = 2, mass = 2300, torque = 700, redline = 5800, top = 230, grip = 0.93f, down = 0.6f, length = 5.0f,  traffic = true, color = new Color(0.1f,0.6f,0.2f) } },
-            { "car 2",  new Preset { name = "Muscle V8",     price = 50000,  drive = 1, mass = 1650, torque = 620, redline = 6500, top = 265, grip = 0.97f, down = 0.8f, length = 4.8f,  traffic = true, color = new Color(0.05f,0.05f,0.06f) } },
-            { "car 8",  new Preset { name = "Drift Spec",    price = 62000,  drive = 1, mass = 1320, torque = 520, redline = 8200, top = 270, grip = 1.02f, down = 1.1f, length = 4.4f,  traffic = false, color = new Color(1f,0.4f,0f) } },
-            { "car 6",  new Preset { name = "Street GT-R",   price = 85000,  drive = 2, mass = 1500, torque = 580, redline = 8000, top = 290, grip = 1.12f, down = 1.2f, length = 4.5f,  traffic = false, police = "undercover", color = new Color(0.5f,0.1f,0.65f) } },
-            { "car 5",  new Preset { name = "Süper Kanat",   price = 120000, drive = 1, mass = 1450, torque = 650, redline = 8800, top = 315, grip = 1.16f, down = 1.4f, length = 4.55f, traffic = false, color = new Color(0.1f,0.75f,0.85f) } },
+            { "car 3",  new Preset { name = "Kompakt Hatch", eng = "I4", turbo = false, price = 0,      drive = 0, mass = 1200, torque = 260, redline = 6800, top = 205, grip = 1.00f, down = 0.8f, length = 4.1f,  traffic = true, color = new Color(0.9f,0.9f,0.9f) } },
+            { "car 10", new Preset { name = "Sokak Coupe", eng = "I6", turbo = false,   price = 15000,  drive = 1, mass = 1300, torque = 330, redline = 7200, top = 225, grip = 1.00f, down = 0.9f, length = 4.3f,  traffic = true, color = new Color(0.08f,0.2f,0.75f) } },
+            { "car 1",  new Preset { name = "Tuner S", eng = "I4", turbo = true,       price = 26000,  drive = 2, mass = 1350, torque = 400, redline = 7800, top = 245, grip = 1.05f, down = 1.0f, length = 4.4f,  traffic = true, color = new Color(0.95f,0.7f,0.05f) } },
+            { "car 4",  new Preset { name = "Coupe RS", eng = "I6", turbo = true,      price = 38000,  drive = 1, mass = 1380, torque = 450, redline = 7500, top = 255, grip = 1.06f, down = 1.0f, length = 4.45f, traffic = true, police = "patrol", color = new Color(0.75f,0.04f,0.04f) } },
+            { "car 7",  new Preset { name = "Bulldog SUV", eng = "V8", turbo = false,   price = 42000,  drive = 2, mass = 2100, torque = 650, redline = 6200, top = 235, grip = 0.95f, down = 0.7f, length = 4.9f,  traffic = true, police = "suv", color = new Color(0.55f,0.57f,0.6f) } },
+            { "car 9",  new Preset { name = "Titan Pikap", eng = "V8", turbo = false,   price = 46000,  drive = 2, mass = 2300, torque = 700, redline = 5800, top = 230, grip = 0.93f, down = 0.6f, length = 5.0f,  traffic = true, color = new Color(0.1f,0.6f,0.2f) } },
+            { "car 2",  new Preset { name = "Muscle V8", eng = "V8", turbo = false,     price = 50000,  drive = 1, mass = 1650, torque = 620, redline = 6500, top = 265, grip = 0.97f, down = 0.8f, length = 4.8f,  traffic = true, color = new Color(0.05f,0.05f,0.06f) } },
+            { "car 8",  new Preset { name = "Drift Spec", eng = "I6", turbo = true,    price = 62000,  drive = 1, mass = 1320, torque = 520, redline = 8200, top = 270, grip = 1.02f, down = 1.1f, length = 4.4f,  traffic = false, color = new Color(1f,0.4f,0f) } },
+            { "car 6",  new Preset { name = "Street GT-R", eng = "I6", turbo = true,   price = 85000,  drive = 2, mass = 1500, torque = 580, redline = 8000, top = 290, grip = 1.12f, down = 1.2f, length = 4.5f,  traffic = false, police = "undercover", color = new Color(0.5f,0.1f,0.65f) } },
+            { "car 5",  new Preset { name = "Süper Kanat", eng = "V10", turbo = false,   price = 120000, drive = 1, mass = 1450, torque = 650, redline = 8800, top = 315, grip = 1.16f, down = 1.4f, length = 4.55f, traffic = false, color = new Color(0.1f,0.75f,0.85f) } },
         };
 
         [MenuItem("Most Wanted/Arabaları Tara")]
@@ -198,7 +198,7 @@ namespace MostWanted.EditorTools
                 {
                     e.displayName = pr.name; e.price = pr.price; e.drive = pr.drive; e.massKg = pr.mass; e.torqueNm = pr.torque;
                     e.redlineRpm = pr.redline; e.topSpeedKmh = pr.top; e.grip = pr.grip; e.downforce = pr.down; e.length = pr.length;
-                    e.policeRole = pr.police ?? ""; e.inTraffic = pr.traffic; e.defaultColor = pr.color;
+                    e.policeRole = pr.police ?? ""; e.inTraffic = pr.traffic; e.defaultColor = pr.color; e.engineType = pr.eng; e.turbo = pr.turbo;
                     e.credit = "Store InvoGames — Car Asset Pack for Arcade & Demolition Racing Games (Standard License)";
                 }
                 else
