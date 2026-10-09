@@ -213,7 +213,7 @@ namespace MostWanted
                 Vector3 av = pl.rb.angularVelocity;
                 pl.rb.angularVelocity = new Vector3(av.x, Mathf.Clamp(av.y, -1.6f, 1.6f), av.z);
             }
-            Game.I.rig.Shake(Mathf.Clamp01(rel / 25f));
+            if (rel > 6f) Game.I.rig.Shake(Mathf.Clamp01((rel - 6f) / 24f));
             if (hitCool > 0f || rel < 4f) return;
             hitCool = 1f;
             // 0 yıldızda sadece kasıtlı çarpma (> 40 km/s göreli, yandan/önden) takip başlatır

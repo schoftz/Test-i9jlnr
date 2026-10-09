@@ -639,7 +639,7 @@ namespace MostWanted
                 if (dtv > 0f)
                 {
                     float tr = Mathf.Clamp(latG * 2.4f, -4f, 4f), tp = Mathf.Clamp(-longG * 1.6f, -3f, 3f);
-                    const float w0 = 11f, z = 0.55f;
+                    const float w0 = 9f, z = 1.0f;   // kritik sönüm: salınım yok
                     bodyRollV += (w0 * w0 * (tr - bodyRoll) - 2f * z * w0 * bodyRollV) * dtv; bodyRoll += bodyRollV * dtv;
                     bodyPitchV += (w0 * w0 * (tp - bodyPitch) - 2f * z * w0 * bodyPitchV) * dtv; bodyPitch += bodyPitchV * dtv;
                 }

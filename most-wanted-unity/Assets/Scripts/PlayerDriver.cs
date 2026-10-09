@@ -73,6 +73,7 @@ namespace MostWanted
             float dtU = Time.unscaledDeltaTime;
             steerSmooth = Mathf.MoveTowards(steerSmooth, st, dtU * (Mathf.Abs(st) > Mathf.Abs(steerSmooth) ? 8f : 12f));
             car.steerSens = SaveSystem.Data != null ? SaveSystem.Data.steerSens : 1f;
+            CameraRig.shakeScale = SaveSystem.Data != null ? Mathf.Clamp(SaveSystem.Data.camShake, 0f, 2f) : 1f;
             int ds = SaveSystem.Data != null ? SaveSystem.Data.driveStyle : 0;
             car.mw = ds == 0 && !car.driftMode;   // drift ayarı açık drift aracı Saarg'da kalır
             car.arcade = ds == 1;

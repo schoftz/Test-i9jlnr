@@ -388,7 +388,7 @@ namespace MostWanted
                     Debug.Log("[MW] Çarpışma: " + path + " katman=" + (hitCol != null ? LayerMask.LayerToName(hitCol.gameObject.layer) + "(" + hitCol.gameObject.layer + ")" : "?") +
                               " v=" + c.relativeVelocity.magnitude.ToString("0.0") + " vn=" + vn.ToString("0.0") + " nokta=" + (c.contactCount > 0 ? c.GetContact(0).point.ToString("F1") : "-") + " normal=" + n.ToString("F2"));
                     if (vn > 4f) career.DriftCrash();
-                    if (vn > 8f) rig.Shake(Mathf.Clamp01(vn / 30f));
+                    if (vn > 6f) rig.Shake(Mathf.Clamp01((vn - 6f) / 24f));
                     if (playerDriver.engineAudio != null) playerDriver.engineAudio.Impact(vn);
                 }
             };

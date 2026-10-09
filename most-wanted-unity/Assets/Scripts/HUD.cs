@@ -379,15 +379,20 @@ namespace MostWanted
             bool want = SaveSystem.Data.speedLines && g.menu == Game.Menu.None && (g.player.nitroActive || kmh > 200f);
             speedLineAlpha = Mathf.MoveTowards(speedLineAlpha, want ? Mathf.Clamp01(0.5f + (kmh - 200f) / 200f + (g.player.nitroActive ? 0.4f : 0f)) : 0f, Time.unscaledDeltaTime * 2.5f);
             if (speedLineAlpha <= 0.01f) return;
-            var rnd = new System.Random(Mathf.FloorToInt(Time.unscaledTime * 24f));
             Vector2 c = new Vector2(W / 2, H * 0.48f);
+            float now = Time.unscaledTime;
             for (int i = 0; i < 26; i++)
             {
+                // her çizginin kendi yavaş döngüsü (~0.35 sn) ve yumuşak giriş/çıkışı → titreme yok
+                float ph = now * 2.8f + i * 0.618f;
+                int cyc = Mathf.FloorToInt(ph);
+                float fr = ph - cyc;
+                var rnd = new System.Random(cyc * 131 + i * 7919);
                 float ang = (float)rnd.NextDouble() * Mathf.PI * 2f;
-                float dist = 520f + (float)rnd.NextDouble() * 420f;   // sadece ekran kenarlarına yakın
+                float dist = 520f + (float)rnd.NextDouble() * 420f + fr * 120f;   // dışa doğru akar
                 float len = 120f + (float)rnd.NextDouble() * 260f;
                 Vector2 dir = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang));
-                Color lc = new Color(1f, 1f, 1f, 0.10f * speedLineAlpha);
+                Color lc = new Color(1f, 1f, 1f, 0.10f * speedLineAlpha * Mathf.Sin(fr * Mathf.PI));
                 for (float t = 0; t < len; t += 6f) { Vector2 q = c + dir * (dist + t); Rect(new Rect(q.x - 1.2f, q.y - 1.2f, 2.4f, 2.4f), lc); }
             }
         }

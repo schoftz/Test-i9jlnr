@@ -17,6 +17,10 @@ namespace MostWanted
         float latAccel;
         Vector3 lookDir;
 
+        /// <summary>Genel sarsıntı ölçeği (SaveData.camShake; 0 = kapalı).</summary>
+        public static float shakeScale = 1f;
+        float nitroShake;
+        /// <summary>Sadece gerçek çarpışmalar (> 6 m/s) için. Fren/el freni/kayma sarsıntı üretmez.</summary>
         public void Shake(float amount) { shake = Mathf.Max(shake, amount); }
 
         public void Next()
@@ -45,17 +49,22 @@ namespace MostWanted
             Vector3 v = U.Vel(target.rb);
             Vector3 acc = (v - lastV) / Mathf.Max(Time.deltaTime, 0.0001f);
             lastV = v;
-            if (Time.deltaTime > 0f) latAccel = Mathf.Lerp(latAccel, target.latG * CarMath.Gravity, 1f - Mathf.Exp(-dt * 6f));
+            if (Time.deltaTime > 0f) latAccel = Mathf.Lerp(latAccel, target.latG * CarMath.Gravity, 1f - Mathf.Exp(-dt * 3f));   // yavaş filtre: süspansiyon gürültüsü kameraya geçmesin
             float latG = latAccel / CarMath.Gravity;
 
-            float targetFov = 58f + sp01 * 16f + (target.nitroActive ? 12f : 0f) + Mathf.Clamp(Mathf.Abs(latG) - 0.6f, 0f, 1.5f) * 3f;   // yüksek yanal g'de FOV nabzı
-            if (target.tyreSlip > 1.2f && kmh > 30f) Shake(Mathf.Clamp01((target.tyreSlip - 1.2f) * 0.08f));
+            float targetFov = 58f + sp01 * 16f + (target.nitroActive ? 12f : 0f) + Mathf.Clamp(Mathf.Abs(latG) - 0.6f, 0f, 1.5f) * 2f;   // yüksek yanal g'de yumuşak FOV artışı
             var pd = target.GetComponent<PlayerDriver>();
             if (pd != null && pd.speedbreakerOn) targetFov -= 6f;
 
-            shake = Mathf.Max(0f, shake - dt * 2.5f);
-            float sh = shake + (target.nitroActive ? 0.06f : 0f) + (kmh > 200f ? (kmh - 200f) / 2000f : 0f);
-            Vector3 shakeOff = new Vector3(Mathf.PerlinNoise(Time.unscaledTime * 25f, 0f) - 0.5f, Mathf.PerlinNoise(0f, Time.unscaledTime * 25f) - 0.5f, 0f) * sh;
+            // sarsıntı: çarpışma (kısa sönüm) + nitro (hafif, 0.2 sn içinde gelir/gider). Fren/kayma/hız sarsıntısı YOK.
+            shake = Mathf.Max(0f, shake - dt * 4f);
+            nitroShake = Mathf.MoveTowards(nitroShake, target.nitroActive ? 1f : 0f, dt / 0.2f);
+            float tt = Time.unscaledTime * 15f;
+            Vector3 noise = new Vector3(Mathf.PerlinNoise(tt, 0.3f) - 0.5f, Mathf.PerlinNoise(0.7f, tt) - 0.5f, 0f) * 2f;   // -1..1, ~15 Hz
+            float posAmp = (shake * 0.35f + nitroShake * 0.03f) * shakeScale;
+            float rotAmp = (shake * 2f + nitroShake * 0.3f) * shakeScale;
+            Vector3 shakeOff = noise * posAmp;
+            Quaternion shakeRot = Quaternion.Euler(noise.y * rotAmp, noise.x * rotAmp * 0.5f, 0f);
 
             if (mode == Mode.Hood || mode == Mode.Bumper)
             {
@@ -63,7 +72,7 @@ namespace MostWanted
                 float L = target.def != null ? target.def.length : 4.5f;
                 Vector3 lp = mode == Mode.Hood ? new Vector3(0, 1.25f, 0.2f) : new Vector3(0, 0.75f, L * 0.5f + 0.1f);
                 cam.transform.position = t.TransformPoint(lp) + t.TransformVector(shakeOff * 0.3f);
-                cam.transform.rotation = Quaternion.LookRotation(t.forward, t.up) * Quaternion.Euler(0, 0, Mathf.Clamp(-latG * 1.2f, -2f, 2f));
+                cam.transform.rotation = Quaternion.LookRotation(t.forward, t.up) * Quaternion.Euler(0, 0, Mathf.Clamp(-latG * 1.2f, -2f, 2f)) * shakeRot;
                 targetFov += 6f;
                 if (b == null) { }
             }
@@ -92,10 +101,10 @@ namespace MostWanted
                 cam.transform.position = Vector3.SmoothDamp(cam.transform.position, desired, ref vel, smooth, Mathf.Infinity, dt);
                 lean = Mathf.Lerp(lean, Mathf.Clamp(-latG * 2f, -3f, 3f), dt * 4f);
                 Vector3 focus = t.position + Vector3.up * (far ? 1.4f : 1.2f) + look * 3f;
-                cam.transform.rotation = Quaternion.LookRotation(focus - cam.transform.position, Vector3.up) * Quaternion.Euler(0, 0, lean);
+                cam.transform.rotation = Quaternion.LookRotation(focus - cam.transform.position, Vector3.up) * Quaternion.Euler(0, 0, lean) * shakeRot;
                 cam.transform.position += cam.transform.TransformVector(shakeOff);
             }
-            fov = Mathf.Lerp(fov, targetFov, dt * 4f);
+            fov = Mathf.Lerp(fov, targetFov, 1f - Mathf.Exp(-dt * 3f));
             cam.fieldOfView = fov;
         }
     }

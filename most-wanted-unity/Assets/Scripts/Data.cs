@@ -131,6 +131,7 @@ namespace MostWanted
         public bool gpuResidentDrawer = false;
         public float steerSens = 1.2f;
         public int policeDiff = 0;
+        public float camShake = 1f;               // kamera sarsıntı ölçeği (0 kapalı … 1 varsayılan); CameraRig.shakeScale
         public int driveStyle = 0;                // 0 MW Sürüş (varsayılan), 1 Arcade (RVP + yardımlar), 2 Gerçekçi (RVP)                // 0 Kolay, 1 Normal, 2 Zor
         public bool speedLines = true;           // direksiyon hassasiyeti 0.6–1.6  // Unity 6 GPU Resident Drawer (Keep All ayarı gerekir)
         public float[] volumes = { 1f, 1f, 0.6f, 0.8f }; // Motor, Efekt, Müzik, Siren
