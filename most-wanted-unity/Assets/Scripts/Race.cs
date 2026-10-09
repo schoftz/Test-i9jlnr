@@ -110,7 +110,11 @@ namespace MostWanted
             {
                 // rota merkez hattından sola kaydırılmış ızgara (şerit noktaları zaten sağda)
                 Vector3 baseP = start - right * 2.2f;
-                for (int s = 0; s < 4; s++) slots.Add(baseP - dir * (8f + (s / 2) * 9f) + right * ((s % 2 == 0) ? -2.6f : 2.6f) + Vector3.up * 0.5f);
+                // ızgara başlangıç noktasının ARKASINA değil, ilk yol parçasının üstüne kurulur (arkası kavşak/kaldırım/çim olabiliyor)
+                float segLen = U.FlatDist(d.route[0], d.route[1]);
+                float front = Mathf.Max(11f, Mathf.Min(13f, segLen * 0.6f));
+                for (int s = 0; s < 4; s++)
+                    slots.Add(baseP + dir * (front - (s / 2) * 9f) + right * ((s % 2 == 0) ? -2.6f : 2.6f) + Vector3.up * 0.5f);
             }
             g.traffic.ClearAround(start, 60f);
 
