@@ -570,6 +570,11 @@ namespace MostWanted
                         RowLabel(x, "Direksiyon hassasiyeti", "0.60 – 2.00 arası.");
                         float ns = UIKit.Slider("steer", cx, rowY + 13, cw, d.steerSens, 0.6f, 2.0f, d.steerSens.ToString("0.00"));
                         if (Mathf.Abs(ns - d.steerSens) > 0.001f) { d.steerSens = Mathf.Round(ns * 20f) / 20f; volDirty = true; }
+                        NextRow();
+                        RowLabel(x, "Kamera sarsıntısı", "Hız ve çarpışma sarsıntısı. %0 = kapalı.");
+                        float cs = Mathf.Clamp(d.camShake, 0f, 2f);
+                        float nc = UIKit.Slider("shake", cx, rowY + 13, cw, cs, 0f, 2f, cs <= 0.001f ? "KAPALI" : "%" + Mathf.RoundToInt(cs * 100f));
+                        if (Mathf.Abs(nc - cs) > 0.001f) { d.camShake = Mathf.Clamp(Mathf.Round(nc * 20f) / 20f, 0f, 2f); volDirty = true; }
                         if (UIKit.Rep && !UIKit.MouseHeld && volDirty) { volDirty = false; SaveSystem.Save(); }
                         break;
                     }
