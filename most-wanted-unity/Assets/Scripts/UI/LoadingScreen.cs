@@ -61,6 +61,7 @@ namespace MostWanted
         {
             if (inst == null) return;
             inst.progress = Mathf.Max(inst.progress, Mathf.Clamp01(p));
+            inst.stall = 0f;
             if (!string.IsNullOrEmpty(s)) inst.step = s;
         }
 
@@ -73,9 +74,20 @@ namespace MostWanted
             if (inst.blackCam != null) { Destroy(inst.blackCam.gameObject); inst.blackCam = null; }
         }
 
+        float stall;   // son ilerlemeden beri geçen süre (kurulum hata verip takılırsa ekran sonsuza dek kalmasın)
+
         void Update()
         {
             float dt = Time.unscaledDeltaTime;
+            if (active)
+            {
+                stall += dt;
+                if (stall > 25f)
+                {
+                    Debug.LogError("[MW] Yükleme 25 sn ilerlemedi; kurulum sırasında hata olmuş olabilir (Console'a bak). Yükleme ekranı kapatılıyor.");
+                    End();
+                }
+            }
             shown = Mathf.MoveTowards(shown, progress, dt * 1.5f);
             if (!active) fade = Mathf.MoveTowards(fade, 0f, dt / 0.45f);
             tipT += dt;
