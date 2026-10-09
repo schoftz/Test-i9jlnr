@@ -297,8 +297,8 @@ namespace MostWanted
             }
 
             // sürüş yüksekliği / kamber / far / cam filmi
-            float drop = new[] { 0f, 0.02f, 0.04f, 0.06f }[v[CustomCatalog.Ride]];
-            float camber = new[] { 0f, 2f, 4f, 7f }[v[CustomCatalog.Camber]];
+            float drop = new[] { 0f, 0.04f, 0.08f, 0.12f }[v[CustomCatalog.Ride]];
+            float camber = new[] { 0f, 3f, 6f, 10f }[v[CustomCatalog.Camber]];
             Color head = CustomCatalog.HeadColors[v[CustomCatalog.Head]];
             if (car != null)
             {
