@@ -69,5 +69,27 @@ namespace MostWanted
             m.SetFloat("_Smoothness", smoothness);
             return m;
         }
+    
+        /// <summary>Arazi: renk haritası + prosedürel çim detayı + uzaklık tonu.</summary>
+        public static Material Ground(Texture colorMap)
+        {
+            var b = Base("MW_GroundMat");
+            if (b == null) return null;
+            var m = new Material(b) { name = "MW_Arazi" };
+            m.SetTexture("_BaseMap", colorMap);
+            return m;
+        }
+
+        /// <summary>Ağaç malzemesi (instanced): leaf = yaprak (rüzgâr, geçirgenlik), aksi halde gövde.</summary>
+        public static Material Foliage(Color color, bool leaf)
+        {
+            var b = Base("MW_FoliageMat");
+            if (b == null) return null;
+            var m = new Material(b) { name = leaf ? "MW_Yaprak" : "MW_Govde" };
+            m.SetColor("_BaseColor", color);
+            m.SetFloat("_Leaf", leaf ? 1f : 0f);
+            m.enableInstancing = true;
+            return m;
+        }
     }
 }

@@ -1,6 +1,7 @@
 // Most Wanted — araç gölgelendiricileri ortak kodu (MW/CarPaint, MW/Glass, MW/Tire).
 // Kullanım: Core.hlsl + UnityPerMaterial CBUFFER (_BaseMap_ST dahil) tanımlandıktan sonra include edilir.
 // Forward geçişte Lighting.hlsl include edilmiş olmalı (MW_FORWARD tanımlanır).
+// MW_VERTEX_MODIFY tanımlıysa tüm geçişlerde float3 MWModifyVertex(float3 positionOS) çağrılır (rüzgâr vb.).
 #ifndef MW_CARPAINT_COMMON_INCLUDED
 #define MW_CARPAINT_COMMON_INCLUDED
 
@@ -60,6 +61,10 @@ MWVaryings MWVert(MWAttributes v)
 {
     MWVaryings o = (MWVaryings)0;
     UNITY_SETUP_INSTANCE_ID(v);
+#ifdef MW_VERTEX_MODIFY
+    v.positionOS.xyz = MWModifyVertex(v.positionOS.xyz);
+#endif
+
     UNITY_TRANSFER_INSTANCE_ID(v, o);
     UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
     VertexPositionInputs p = GetVertexPositionInputs(v.positionOS.xyz);
@@ -102,6 +107,10 @@ float3 _LightPosition;
 float4 MWShadowVert(MWAttributes v) : SV_POSITION
 {
     UNITY_SETUP_INSTANCE_ID(v);
+#ifdef MW_VERTEX_MODIFY
+    v.positionOS.xyz = MWModifyVertex(v.positionOS.xyz);
+#endif
+
     float3 positionWS = TransformObjectToWorld(v.positionOS.xyz);
     float3 normalWS = TransformObjectToWorldNormal(v.normalOS);
 #if defined(_CASTING_PUNCTUAL_LIGHT_SHADOW)
@@ -125,6 +134,10 @@ half4 MWShadowFrag() : SV_Target { return 0; }
 float4 MWDepthVert(MWAttributes v) : SV_POSITION
 {
     UNITY_SETUP_INSTANCE_ID(v);
+#ifdef MW_VERTEX_MODIFY
+    v.positionOS.xyz = MWModifyVertex(v.positionOS.xyz);
+#endif
+
     return TransformObjectToHClip(v.positionOS.xyz);
 }
 half4 MWDepthFrag() : SV_Target { return 0; }
@@ -141,6 +154,10 @@ MWDNVaryings MWDepthNormalsVert(MWAttributes v)
 {
     MWDNVaryings o = (MWDNVaryings)0;
     UNITY_SETUP_INSTANCE_ID(v);
+#ifdef MW_VERTEX_MODIFY
+    v.positionOS.xyz = MWModifyVertex(v.positionOS.xyz);
+#endif
+
     o.positionCS = TransformObjectToHClip(v.positionOS.xyz);
     o.normalWS = TransformObjectToWorldNormal(v.normalOS);
     return o;

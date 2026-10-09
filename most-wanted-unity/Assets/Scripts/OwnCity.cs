@@ -25,6 +25,7 @@ namespace MostWanted
         readonly List<InstancedBatch> batches = new List<InstancedBatch>();
         readonly List<Vector3> tunnelLights = new List<Vector3>();
         CityRuntime runtime;
+        StreetLights streetLights;
 
         public readonly CitySurface surf;
 
@@ -52,6 +53,7 @@ namespace MostWanted
             BuildTerrain();
             BuildBuildings();
             BuildWaterAndTrees();
+            streetLights = StreetLights.Build(this, root);   // sokak lambaları + ışık havuzları (Render ajanı)
             BuildMeta();
             foreach (var b in batches) b.Bake();
             runtime.batches = batches;
@@ -501,8 +503,8 @@ namespace MostWanted
         {
             IndexRoads();
             var tex = GroundTexture();
-            var mat = U.NewMat(Color.white, 0.06f, 0f);
-            U.SetMainTex(mat, tex);
+            var mat = CityLook.Ground(tex);   // MW/Ground (çim detayı, uzaklık tonu, ıslak mod)
+            if (mat == null) { mat = U.NewMat(Color.white, 0.06f, 0f); U.SetMainTex(mat, tex); }
             float x0 = CitySurface.TerrainX0, z0 = CitySurface.TerrainZ0, size = CitySurface.TerrainSize;
             int chunks = CitySurface.TerrainChunks;
             float cs = size / chunks;
@@ -796,9 +798,9 @@ namespace MostWanted
             go.AddComponent<MeshFilter>().sharedMesh = PrimMesh(PrimitiveType.Quad);
             var r = go.AddComponent<MeshRenderer>(); r.sharedMaterial = m; r.shadowCastingMode = ShadowCastingMode.Off;
 
-            var trunk = U.Mat(new Color(0.33f, 0.24f, 0.15f), 0.1f);
-            var leafA = U.Mat(new Color(0.18f, 0.36f, 0.13f), 0.1f);
-            var leafB = U.Mat(new Color(0.26f, 0.42f, 0.16f), 0.1f);
+            var trunk = CityLook.Foliage(new Color(0.33f, 0.24f, 0.15f), false) ?? U.Mat(new Color(0.33f, 0.24f, 0.15f), 0.1f);
+            var leafA = CityLook.Foliage(new Color(0.18f, 0.36f, 0.13f), true) ?? U.Mat(new Color(0.18f, 0.36f, 0.13f), 0.1f);
+            var leafB = CityLook.Foliage(new Color(0.20f, 0.34f, 0.15f), true) ?? U.Mat(new Color(0.26f, 0.42f, 0.16f), 0.1f);
             var cyl = PrimMesh(PrimitiveType.Cylinder); var sph = PrimMesh(PrimitiveType.Sphere);
             var treeMesh = Combine(cyl, Matrix4x4.TRS(new Vector3(0, 2f, 0), Quaternion.identity, new Vector3(0.45f, 2f, 0.45f)), sph, Matrix4x4.TRS(new Vector3(0, 6.2f, 0), Quaternion.identity, new Vector3(6.5f, 6f, 6.5f)));
             var pineMesh = Combine(cyl, Matrix4x4.TRS(new Vector3(0, 2f, 0), Quaternion.identity, new Vector3(0.5f, 2f, 0.5f)), sph, Matrix4x4.TRS(new Vector3(0, 8f, 0), Quaternion.identity, new Vector3(4.5f, 11f, 4.5f)));
@@ -928,6 +930,7 @@ namespace MostWanted
         public override void SetNight(float night)
         {
             foreach (var m in windowMats) U.SetEmission(m, Color.white * (night > 0.35f ? night * 1.1f : 0f));
+            if (streetLights != null) streetLights.SetNight(night);
         }
     }
 
