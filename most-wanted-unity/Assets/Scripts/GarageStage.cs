@@ -267,7 +267,19 @@ namespace MostWanted
         void Photo()
         {
             string path = System.IO.Path.Combine(Application.persistentDataPath, "garaj_" + System.DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".png");
-            ScreenCapture.CaptureScreenshot(path);
+            // ScreenCapture modülüne bağımlı olmamak için garaj kamerasını RenderTexture'a çizip PNG kaydediyoruz
+            if (gcam == null) return;
+            int w = 1920, h = 1080;
+            var rt = RenderTexture.GetTemporary(w, h, 24);
+            var prevT = gcam.targetTexture; var prevA = RenderTexture.active;
+            gcam.targetTexture = rt; gcam.Render();
+            RenderTexture.active = rt;
+            var tex = new Texture2D(w, h, TextureFormat.RGB24, false);
+            tex.ReadPixels(new Rect(0, 0, w, h), 0, 0); tex.Apply();
+            gcam.targetTexture = prevT; RenderTexture.active = prevA;
+            RenderTexture.ReleaseTemporary(rt);
+            System.IO.File.WriteAllBytes(path, tex.EncodeToPNG());
+            Object.Destroy(tex);
             Toast("Fotoğraf kaydedildi: " + path);
         }
 
