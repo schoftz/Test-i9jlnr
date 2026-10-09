@@ -156,7 +156,7 @@ namespace MostWanted.Gen
             float h = 6f;
             h += 16f * (float)Math.Exp(-(r * r) / (2f * 380f * 380f));                      // merkez tepesi (gökdelenler)
             h += 9f * (Noise(x / 520f + 11.3f, z / 520f + 7.1f) - 0.5f) * 2f;               // hafif engebe
-            float dw = (float)Math.Sqrt((x + 1520f) * (x + 1520f) + (z - 180f) * (z - 180f)); // batı tepesi (tünel)
+            float dw = (float)Math.Sqrt((x + 1520f) * (x + 1520f) + (z - 650f) * (z - 650f)); // batı tepesi (tünel)
             h += 62f * (float)Math.Exp(-(dw * dw) / (2f * 230f * 230f));
             // uzak dağlar
             float edge = Math.Max(Math.Max(-x - 1900f, x - 2600f), Math.Max(-z - 2200f, z - 2100f));
@@ -235,6 +235,18 @@ namespace MostWanted.Gen
             // nehir
             for (float x = -1800f; x <= 1500f; x += 40f) river.Add(new V2(x, RiverZ(x)));
 
+            // --- otoyol halkası (deniz kıyısı + batı tepesinde tünel + nehir üzerinde asma köprü)
+            var hw = new List<V2>
+            {
+                new V2(-1480f, -1500f), new V2(-1520f, -400f), new V2(-1500f, 650f), new V2(-1350f, 1500f),
+                new V2(-500f, 1750f), new V2(600f, 1720f), new V2(1250f, 1600f), new V2(SeaX(1000f) - 40f, 900f),
+                new V2(SeaX(0f) - 30f, 0f), new V2(SeaX(-900f) - 40f, -900f), new V2(1200f, -1800f),
+                new V2(200f, -1900f), new V2(-900f, -1850f)
+            };
+            hwPoly = Spline(hw, true, 12f);
+            Poly(RoadClass.Highway, hwPoly);
+
+
             // --- merkez ızgarası (Avenue)
             for (int i = -3; i <= 3; i++)
             {
@@ -261,12 +273,11 @@ namespace MostWanted.Gen
                 if (k % 2 == 0) s = new V2(Math.Sign(Math.Round(d.x)) * 330f, Math.Sign(Math.Round(d.z)) * 330f);
                 if (k % 2 == 0) s = new V2(Math.Abs(d.x) > 0.5f ? Math.Sign(d.x) * 330f : 0f, Math.Abs(d.z) > 0.5f ? Math.Sign(d.z) * 330f : 0f);
                 else s = new V2(Math.Sign(d.x) * 330f, Math.Sign(d.z) * 330f);
-                V2 e = d * 1500f;
+                V2 e = d * 2300f;
                 var mid = V2.Lerp(s, e, 0.55f) + d.Right * (35f * (k % 2 == 0 ? 1f : -1f));
                 var curve = Spline(new List<V2> { s, mid, e }, false, 12f);
                 // otoyolun içinde kalsın
-                var clipped = new List<V2>();
-                foreach (var p in curve) { if (!InsideHighway(p, 25f)) break; clipped.Add(p); }
+                var clipped = ClipToHighway(curve);
                 if (clipped.Count > 2) Poly(RoadClass.Avenue, clipped);
             }
             // --- konut ızgarası (batı/kuzeybatı), park ve göl hariç
@@ -288,21 +299,34 @@ namespace MostWanted.Gen
             for (float z = -1700f; z <= 1600f; z += 80f) coast.Add(new V2(SeaX(z) - 150f, z));
             Poly(RoadClass.Coastal, Spline(coast, false, 12f));
             for (float z = -400f; z <= 800f; z += 300f) Line(RoadClass.Street, new V2(1020f, z), new V2(SeaX(z) - 150f, z));
-            // --- otoyol halkası (deniz kıyısı + batı tepesinde tünel + nehir üzerinde asma köprü)
-            var hw = new List<V2>
-            {
-                new V2(-1480f, -1500f), new V2(-1520f, -400f), new V2(-1500f, 650f), new V2(-1350f, 1500f),
-                new V2(-500f, 1750f), new V2(600f, 1720f), new V2(1250f, 1600f), new V2(SeaX(1000f) - 40f, 900f),
-                new V2(SeaX(0f) - 30f, 0f), new V2(SeaX(-900f) - 40f, -900f), new V2(1200f, -1800f),
-                new V2(200f, -1900f), new V2(-900f, -1850f)
-            };
-            Poly(RoadClass.Highway, Spline(hw, true, 12f));
-
             Planarize();
             Heights();
             PlaceBuildings();
             Districts();
             Races();
+        }
+
+        List<V2> hwPoly = new List<V2>();
+
+        /// <summary>Eğriyi otoyolla ilk kesiştiği noktada bitir (kavşak = bağlantı rampası).</summary>
+        List<V2> ClipToHighway(List<V2> curve)
+        {
+            var o = new List<V2> { curve[0] };
+            for (int i = 1; i < curve.Count; i++)
+            {
+                for (int k = 1; k < hwPoly.Count; k++)
+                {
+                    float t, u;
+                    if (SegX(curve[i - 1], curve[i], hwPoly[k - 1], hwPoly[k], out t, out u))
+                    {
+                        o.Add(V2.Lerp(curve[i - 1], curve[i], t));
+                        o.Add(V2.Lerp(curve[i - 1], curve[i], Math.Min(1f, t + 0.02f)));
+                        return o;
+                    }
+                }
+                o.Add(curve[i]);
+            }
+            return o;
         }
 
         public bool InsideHighway(V2 p, float margin)
@@ -565,6 +589,15 @@ namespace MostWanted.Gen
                     }
                     e.ys[0] = ya; e.ys[m - 1] = yb;
                 }
+                // uçlardan erişilebilirlik zarfı: düğüm yüksekliklerine %8'i aşmadan bağlan (uçta basamak yok)
+                for (int i = 0; i < m; i++)
+                {
+                    float lo = Math.Max(ya - s[i] * 0.08f, yb - (L - s[i]) * 0.08f);
+                    float hi = Math.Min(ya + s[i] * 0.08f, yb + (L - s[i]) * 0.08f);
+                    if (lo > hi) { float mid2 = (lo + hi) * 0.5f; lo = hi = mid2; }
+                    e.ys[i] = Math.Max(lo, Math.Min(hi, e.ys[i]));
+                }
+                e.ys[0] = ya; e.ys[m - 1] = yb;
                 for (int i = 0; i < m; i++)
                 {
                     float h = H(e.pts[i].x, e.pts[i].z);
@@ -576,7 +609,6 @@ namespace MostWanted.Gen
 
         // ------------------------------------------------------------------ binalar
         readonly Dictionary<long, List<Box>> occ = new Dictionary<long, List<Box>>();
-        readonly List<KeyValuePair<V2, float>> roadSegs = new List<KeyValuePair<V2, float>>();
 
         static V2[] Corners(Box b)
         {
@@ -670,6 +702,10 @@ namespace MostWanted.Gen
                             case Zone.Suburb: w = 10f + R01() * 4f; dep = 9f + R01() * 4f; h = 5.5f + R01() * 3f; style = 4; off += 6f + R01() * 3f; break;
                             default: w = 14f + R01() * 10f; dep = 12f + R01() * 8f; h = 9f + R01() * 15f; style = 2 + rnd.Next(2); off += 1f; break;
                         }
+                        int rows = z == Zone.Downtown || z == Zone.Midrise ? 3 : z == Zone.Residential ? 2 : 1;
+                        for (int row = 0; row < rows; row++)
+                        {
+                        if (row > 0) { off += dep + 3f; h *= 0.8f + R01() * 0.3f; if (z == Zone.Downtown && style == 6) break; }
                         V2 c = mid + r * (side * (off + dep / 2f));
                         float rot = (float)Math.Atan2(-side * r.x, -side * r.z);   // ön cephe yola bakar
                         var main = new Box { c = c, w = w, d = dep, rot = rot, y0 = 0f, h = h };
@@ -692,7 +728,8 @@ namespace MostWanted.Gen
                         bld.waterTank = (style == 2 || style == 3) && R01() < 0.3f;
                         Occupy(main);
                         buildings.Add(bld);
-                        if (garage) hiding.Add(c);
+                        if (garage) { hiding.Add(c); garage = false; }
+                        }
                     }
                 }
             }

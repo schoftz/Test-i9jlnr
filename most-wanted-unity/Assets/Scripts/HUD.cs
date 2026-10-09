@@ -341,6 +341,7 @@ namespace MostWanted
             // nitro (iç yay) ve speedbreaker (daha iç yay) — ince kavisli çubuklar
             ArcBar(c, R - 58f, p.nitro, p.nitroActive ? Color.white : Blue, oldM);
             if (pd != null) ArcBar(c, R - 68f, pd.speedbreaker, pd.speedbreakerOn ? Color.white : Orange, oldM);
+            Shadow(new Rect(c.x - R + 4, c.y + R - 36, 120, 18), "NİTRO / SB", Align(tiny, TextAnchor.MiddleLeft));
             // ibre
             float rpmK = Mathf.Clamp(p.rpm / 1000f, 0f, maxK);
             float na = ArcStart + rpmK / maxK * ArcSweep;
@@ -358,34 +359,38 @@ namespace MostWanted
             Shadow(new Rect(c.x - 40, c.y + 100, 100, 26), "KM/S", lblSmall);
         }
 
+        /// <summary>Kesintisiz ince kavisli çubuk (sık, üst üste binen dilimler — kesikli görünmez).</summary>
         void ArcBar(Vector2 c, float radius, float v, Color col, Matrix4x4 oldM)
         {
-            const int seg = 48;
+            const int seg = 120;
+            float sweep = ArcSweep * 0.62f;   // yayın sol-alt kısmı (sayılarla çakışmaz)
+            float segLen = 2f * Mathf.PI * radius * (sweep / 360f) / seg + 1.2f;
             int lit = Mathf.RoundToInt(Mathf.Clamp01(v) * seg);
             for (int i = 0; i < seg; i++)
             {
-                float ang = ArcStart + (i + 0.5f) / seg * ArcSweep;
-                GUIUtility.RotateAroundPivot(ang, c);
-                Rect(new Rect(c.x - 2.2f, c.y - radius, 4.4f, 5f), i < lit ? col : new Color(1f, 1f, 1f, 0.12f));
+                float ang = ArcStart + (i + 0.5f) / seg * sweep;
+                GUIUtility.RotateAroundPivot(ang + 90f, c);
+                Rect(new Rect(c.x - segLen * 0.5f, c.y - radius, segLen, 4f), i < lit ? col : new Color(1f, 1f, 1f, 0.1f));
                 GUI.matrix = oldM;
             }
         }
 
+        float speedLineAlpha;
         void SpeedLines(Game g, float W, float H, float kmh)
         {
-            float k = Mathf.Clamp01((kmh - 170f) / 130f) + (g.player.nitroActive ? 0.6f : 0f);
-            if (k <= 0.01f || g.menu != Game.Menu.None) return;
-            var rnd = new System.Random(Mathf.FloorToInt(Time.unscaledTime * 30f));
-            Vector2 c = new Vector2(W / 2, H * 0.45f);
+            bool want = SaveSystem.Data.speedLines && g.menu == Game.Menu.None && (g.player.nitroActive || kmh > 200f);
+            speedLineAlpha = Mathf.MoveTowards(speedLineAlpha, want ? Mathf.Clamp01(0.5f + (kmh - 200f) / 200f + (g.player.nitroActive ? 0.4f : 0f)) : 0f, Time.unscaledDeltaTime * 2.5f);
+            if (speedLineAlpha <= 0.01f) return;
+            var rnd = new System.Random(Mathf.FloorToInt(Time.unscaledTime * 24f));
+            Vector2 c = new Vector2(W / 2, H * 0.48f);
             var oldM = GUI.matrix;
-            int n = Mathf.RoundToInt(30 * Mathf.Min(1.5f, k));
-            for (int i = 0; i < n; i++)
+            for (int i = 0; i < 26; i++)
             {
                 float ang = (float)rnd.NextDouble() * 360f;
-                float dist = 380f + (float)rnd.NextDouble() * 500f;
-                float len = 80f + (float)rnd.NextDouble() * 220f;
+                float dist = 520f + (float)rnd.NextDouble() * 420f;   // sadece ekran kenarlarına yakın
+                float len = 120f + (float)rnd.NextDouble() * 260f;
                 GUIUtility.RotateAroundPivot(ang, c);
-                Rect(new Rect(c.x + dist, c.y - 1, len, 2), new Color(1f, 1f, 1f, 0.12f * Mathf.Min(1f, k)));
+                Rect(new Rect(c.x + dist, c.y - 0.75f, len, 1.5f), new Color(1f, 1f, 1f, 0.10f * speedLineAlpha));
                 GUI.matrix = oldM;
             }
         }
@@ -533,6 +538,7 @@ namespace MostWanted
                 g.player.Teleport(g.world.garagePos + Vector3.up * 0.5f, g.world.garageRot);
                 g.rig.Snap();
             }
+            if (GUILayout.Button("Hız çizgileri: " + (d.speedLines ? "Açık" : "Kapalı"), btn)) { d.speedLines = !d.speedLines; SaveSystem.Save(); }
             GUILayout.BeginHorizontal();
             GUILayout.Label("Direksiyon hassasiyeti: " + d.steerSens.ToString("0.00"), small, GUILayout.Width(250));
             float ns = GUILayout.HorizontalSlider(d.steerSens, 0.6f, 1.6f, GUILayout.Width(320));
