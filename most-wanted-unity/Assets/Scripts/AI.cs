@@ -730,9 +730,12 @@ namespace MostWanted
         {
             var graph = Game.I.world.graph;
             Vector3 pp = Game.I.player != null ? Game.I.player.transform.position : near;
+            // yüksek hızda trafik daha uzağa doğar (200 km/s'de ~5 sn yol) — burnunun dibinde araç belirmesin
+            float pv = Game.I.player != null ? Game.I.player.SpeedKmh / 3.6f : 0f;
+            float minD = Mathf.Max(SpawnMin, pv * 5f), maxD = Mathf.Max(SpawnMax, minD + 150f);
             for (int tries = 0; tries < 6; tries++)
             {
-                int a = graph.RandomNodeAround(near, SpawnMin, SpawnMax);
+                int a = graph.RandomNodeAround(near, minD, maxD);
                 var adj = graph.adj[a];
                 if (adj.Count == 0) continue;
                 int b = adj[Random.Range(0, adj.Count)];
@@ -742,7 +745,7 @@ namespace MostWanted
                 dir.Normalize();
                 float off = Mathf.Min(graph.lane[a], graph.lane[b]);
                 Vector3 pos = Vector3.Lerp(pa, pb, Random.Range(0.25f, 0.6f)) + new Vector3(dir.z, 0, -dir.x) * off + Vector3.up * 0.4f;
-                if (U.FlatDist(pos, pp) < SpawnMin || Visible(pos)) continue;
+                if (U.FlatDist(pos, pp) < minD || Visible(pos)) continue;
                 if (U.CarNearby(pos, 6f, d.car.rb)) continue;
                 d.hidden = false;
                 d.car.Teleport(pos, Quaternion.LookRotation(dir));
