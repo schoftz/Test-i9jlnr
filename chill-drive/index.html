@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chill Drive</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#f4b98a;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif}
+  #hud{position:fixed;left:20px;bottom:20px;color:#fff;text-shadow:0 1px 4px #0006;font-size:14px;line-height:1.6;pointer-events:none}
+  #speed{font-size:42px;font-weight:600}
+  #intro{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0005;color:#fff;cursor:pointer;text-align:center}
+  #intro h1{font-weight:300;font-size:56px;margin:0 0 10px;letter-spacing:4px}
+  #intro p{opacity:.85;margin:4px}
+</style>
+</head>
+<body>
+<div id="intro"><h1>chill drive</h1><p>W/↑ gaz · S/↓ fren · A/D ←/→ direksiyon</p><p>C kamera · M müzik · T gündüz/gece</p><p style="margin-top:24px">▶ başlamak için tıkla</p></div>
+<div id="hud"><div id="speed">0</div>km/s · <span id="dist">0.0</span> km</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const W=innerWidth,H=innerHeight;
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(W,H);
+renderer.shadowMap.enabled=true;document.body.appendChild(renderer.domElement);
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(65,W/H,0.1,900);
+const sky={day:[0xf4b98a,0xffe2b8],night:[0x141a33,0x2b2f55]};
+scene.fog=new THREE.Fog(sky.day[0],60,420);scene.background=new THREE.Color(sky.day[0]);
+const hemi=new THREE.HemisphereLight(0xffe7c9,0x6a7b5a,0.8);scene.add(hemi);
+const sun=new THREE.DirectionalLight(0xffc48a,1.0);sun.position.set(-60,80,-40);sun.castShadow=true;
+sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-60,right:60,top:60,bottom:-60,far:300});
+scene.add(sun,sun.target);
+
+// --- road: smooth curvy loop ---
+const pts=[];const N=24;
+for(let i=0;i<N;i++){const a=i/N*Math.PI*2;const r=520+Math.sin(a*3)*140+Math.cos(a*5)*60;
+  pts.push(new THREE.Vector3(Math.cos(a)*r,Math.sin(a*2)*6,Math.sin(a)*r));}
+const curve=new THREE.CatmullRomCurve3(pts,true);
+const SEG=1500,RW=9;
+const roadGeo=new THREE.BufferGeometry(),pos=[],uv=[],idx=[];
+const frames=[];
+for(let i=0;i<=SEG;i++){const t=i/SEG,p=curve.getPointAt(t),tan=curve.getTangentAt(t);
+  const side=new THREE.Vector3(-tan.z,0,tan.x).normalize();frames.push({p,tan,side});
+  const l=p.clone().addScaledVector(side,-RW),r=p.clone().addScaledVector(side,RW);
+  pos.push(l.x,l.y+.05,l.z,r.x,r.y+.05,r.z);uv.push(0,i*0.5,1,i*0.5);
+  if(i<SEG){const k=i*2;idx.push(k,k+1,k+2,k+1,k+3,k+2);}}
+roadGeo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+roadGeo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));roadGeo.setIndex(idx);roadGeo.computeVertexNormals();
+const cv=document.createElement('canvas');cv.width=64;cv.height=128;const g=cv.getContext('2d');
+g.fillStyle='#3b3d45';g.fillRect(0,0,64,128);g.fillStyle='#e8e2d0';g.fillRect(1,0,2,128);g.fillRect(61,0,2,128);
+g.fillStyle='#f2c04b';g.fillRect(31,0,2,64);
+const tex=new THREE.CanvasTexture(cv);tex.wrapT=THREE.RepeatWrapping;tex.anisotropy=8;
+const road=new THREE.Mesh(roadGeo,new THREE.MeshLambertMaterial({map:tex}));road.receiveShadow=true;scene.add(road);
+
+// ground
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(3000,3000),new THREE.MeshLambertMaterial({color:0x8fa66b}));
+ground.rotation.x=-Math.PI/2;ground.position.y=-4;ground.receiveShadow=true;scene.add(ground);
+// terrain hills
+for(let i=0;i<40;i++){const a=Math.random()*Math.PI*2,r=900+Math.random()*400;
+  const h=new THREE.Mesh(new THREE.ConeGeometry(80+Math.random()*120,60+Math.random()*120,7),new THREE.MeshLambertMaterial({color:0x9a8fb8,flatShading:true}));
+  h.position.set(Math.cos(a)*r,20,Math.sin(a)*r);scene.add(h);}
+
+// trees & lamps along road
+const trunkM=new THREE.MeshLambertMaterial({color:0x6b4a36});
+const leafCols=[0xd9824b,0xe0a24a,0x7fa35a,0xc95f4a];
+const lampLights=[];
+for(let i=0;i<SEG;i+=4){const f=frames[i];
+  for(const s of[-1,1]){if(Math.random()<.45)continue;
+    const d=RW+6+Math.random()*30,p=f.p.clone().addScaledVector(f.side,s*d);
+    // avoid placing on another road section
+    let ok=true;for(let j=0;j<SEG;j+=10)if(frames[j].p.distanceToSquared(p)<(RW+4)**2){ok=false;break;}if(!ok)continue;
+    const tr=new THREE.Group(),sc=.7+Math.random()*.8;
+    const tk=new THREE.Mesh(new THREE.CylinderGeometry(.3,.4,3,6),trunkM);tk.position.y=1.5;
+    const lf=new THREE.Mesh(new THREE.IcosahedronGeometry(2.4,0),new THREE.MeshLambertMaterial({color:leafCols[Math.random()*4|0],flatShading:true}));lf.position.y=4.3;
+    tk.castShadow=lf.castShadow=true;tr.add(tk,lf);tr.scale.setScalar(sc);tr.position.set(p.x,f.p.y-.2,p.z);scene.add(tr);}
+  if(i%60===0){const p=f.p.clone().addScaledVector(f.side,RW+1.5);
+    const pole=new THREE.Mesh(new THREE.CylinderGeometry(.1,.1,6),new THREE.MeshLambertMaterial({color:0x444}));pole.position.set(p.x,p.y+3,p.z);
+    const bulb=new THREE.Mesh(new THREE.SphereGeometry(.35),new THREE.MeshBasicMaterial({color:0xfff1c4}));bulb.position.set(p.x,p.y+6,p.z);
+    scene.add(pole,bulb);lampLights.push(bulb);}}
+
+// car
+function makeCar(color){const c=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.BoxGeometry(2,.7,4.2),new THREE.MeshLambertMaterial({color}));body.position.y=.65;
+  const cab=new THREE.Mesh(new THREE.BoxGeometry(1.7,.6,2),new THREE.MeshLambertMaterial({color:0xf5efe6}));cab.position.set(0,1.3,-.2);
+  const glass=new THREE.Mesh(new THREE.BoxGeometry(1.72,.4,1.6),new THREE.MeshLambertMaterial({color:0x334455}));glass.position.set(0,1.35,-.2);
+  body.castShadow=cab.castShadow=true;c.add(body,cab,glass);
+  const wm=new THREE.MeshLambertMaterial({color:0x222});
+  for(const[x,z]of[[-1,1.3],[1,1.3],[-1,-1.3],[1,-1.3]]){const w=new THREE.Mesh(new THREE.CylinderGeometry(.4,.4,.3,12),wm);w.rotation.z=Math.PI/2;w.position.set(x,.4,z);c.add(w);}
+  const hl=new THREE.MeshBasicMaterial({color:0xfff6d5});
+  for(const x of[-.65,.65]){const h=new THREE.Mesh(new THREE.BoxGeometry(.4,.2,.05),hl);h.position.set(x,.75,-2.11);c.add(h);
+    const t=new THREE.Mesh(new THREE.BoxGeometry(.4,.2,.05),new THREE.MeshBasicMaterial({color:0xff3b3b}));t.position.set(x,.75,2.11);c.add(t);}
+  scene.add(c);return c;}
+const car=makeCar(0x5fb3b3);
+const head=new THREE.SpotLight(0xfff1cc,0,80,0.5,0.5);head.position.set(0,1,-2);car.add(head);head.target.position.set(0,0,-20);car.add(head.target);
+
+// traffic
+const traffic=[];const tcols=[0xe07a5f,0xf2cc8f,0x81b29a,0x9d8dc2,0xffffff];
+for(let i=0;i<10;i++){traffic.push({m:makeCar(tcols[i%5]),t:Math.random(),lane:i%2?1:-1,v:(14+Math.random()*6)/curve.getLength()});}
+
+// physics
+let x=frames[0].p.x,z=frames[0].p.z,yaw=Math.atan2(-frames[0].tan.x,-frames[0].tan.z),spd=0,dist=0,camMode=0,night=false;
+const keys={};addEventListener('keydown',e=>{keys[e.code]=true;
+  if(e.code==='KeyC')camMode=(camMode+1)%3;if(e.code==='KeyM')toggleMusic();if(e.code==='KeyT')night=!night;});
+addEventListener('keyup',e=>keys[e.code]=false);
+function nearest(px,pz){let b=0,bd=1e9;for(let i=0;i<SEG;i+=2){const p=frames[i].p,d=(p.x-px)**2+(p.z-pz)**2;if(d<bd){bd=d;b=i;}}return{i:b,d:Math.sqrt(bd)};}
+
+// ambient music (WebAudio lofi pads)
+let ac,master,playing=false,engine;
+function initAudio(){ac=new AudioContext();master=ac.createGain();master.gain.value=.18;
+  const lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.value=1200;master.connect(lp);lp.connect(ac.destination);
+  engine=ac.createOscillator();engine.type='sawtooth';const eg=ac.createGain();eg.gain.value=.02;const ef=ac.createBiquadFilter();ef.type='lowpass';ef.frequency.value=300;
+  engine.connect(ef);ef.connect(eg);eg.connect(ac.destination);engine.start();
+  const chords=[[57,60,64,67],[53,57,60,64],[48,52,55,59],[55,59,62,65]];let c=0;
+  const f=n=>440*2**((n-69)/12);
+  function play(){if(playing){const t=ac.currentTime;
+    for(const n of chords[c]){const o=ac.createOscillator(),gn=ac.createGain();o.type='triangle';o.frequency.value=f(n);
+      gn.gain.setValueAtTime(0,t);gn.gain.linearRampToValueAtTime(.12,t+.8);gn.gain.linearRampToValueAtTime(0,t+3.9);o.connect(gn);gn.connect(master);o.start(t);o.stop(t+4);}
+    for(let k=0;k<4;k++){const o=ac.createOscillator(),gn=ac.createGain();o.frequency.value=f(chords[c][(k*3)%4]+12);
+      const s=t+k*1+.5;gn.gain.setValueAtTime(0,s);gn.gain.linearRampToValueAtTime(.08,s+.05);gn.gain.exponentialRampToValueAtTime(.001,s+.9);o.connect(gn);gn.connect(master);o.start(s);o.stop(s+1);}
+    c=(c+1)%4;}setTimeout(play,4000);}
+  playing=true;play();}
+function toggleMusic(){if(!ac)return;playing=!playing;}
+document.getElementById('intro').onclick=e=>{e.currentTarget.remove();initAudio();};
+
+const clock=new THREE.Clock();const sp=document.getElementById('speed'),ds=document.getElementById('dist');
+let skyMix=0;const tmpC=new THREE.Color();
+function loop(){requestAnimationFrame(loop);const dt=Math.min(clock.getDelta(),.05);
+  const up=keys.KeyW||keys.ArrowUp,dn=keys.KeyS||keys.ArrowDown,lf=keys.KeyA||keys.ArrowLeft,rt=keys.KeyD||keys.ArrowRight;
+  const n=nearest(x,z),off=n.d>RW;
+  const max=off?12:33;
+  if(up)spd+=12*dt;else if(dn)spd-=(spd>0?25:8)*dt;else spd-=Math.sign(spd)*4*dt;
+  if(off)spd-=Math.sign(spd)*10*dt;spd=Math.max(-6,Math.min(max,spd));
+  const steer=(lf?1:0)-(rt?1:0);yaw+=steer*dt*1.6*Math.min(1,Math.abs(spd)/6)*Math.sign(spd||1);
+  x-=Math.sin(yaw)*spd*dt;z-=Math.cos(yaw)*spd*dt;dist+=Math.abs(spd)*dt;
+  const y=frames[n.i].p.y;
+  car.position.set(x,y,z);car.rotation.y=yaw;car.rotation.z=-steer*.04*Math.min(1,spd/20);
+  for(const tc of traffic){tc.t=(tc.t+tc.v*dt*(tc.lane>0?1:-1)+1)%1;const p=curve.getPointAt(tc.t),tn=curve.getTangentAt(tc.t);
+    const sd=new THREE.Vector3(-tn.z,0,tn.x).normalize();tc.m.position.copy(p).addScaledVector(sd,tc.lane*4.5);
+    tc.m.rotation.y=Math.atan2(-tn.x,-tn.z)+(tc.lane>0?0:Math.PI);
+    const dx=tc.m.position.x-x,dz=tc.m.position.z-z;if(dx*dx+dz*dz<9){spd*=.5;x-=dx*.2;z-=dz*.2;}}
+  // camera
+  const back=[[9,4],[0.1,1.6],[22,12]][camMode];
+  const cp=new THREE.Vector3(x+Math.sin(yaw)*back[0],y+back[1],z+Math.cos(yaw)*back[0]);
+  if(camMode===1)camera.position.copy(cp);else camera.position.lerp(cp,1-Math.pow(.02,dt));
+  camera.lookAt(x-Math.sin(yaw)*10,y+1,z-Math.cos(yaw)*10);
+  camera.fov=65+spd*.35;camera.updateProjectionMatrix();
+  // day/night
+  skyMix+=((night?1:0)-skyMix)*dt*.8;
+  tmpC.setHex(sky.day[0]).lerp(new THREE.Color(sky.night[0]),skyMix);scene.background.copy(tmpC);scene.fog.color.copy(tmpC);
+  sun.intensity=1-skyMix*.85;hemi.intensity=.8-skyMix*.55;head.intensity=skyMix*2;
+  sun.position.set(x-60,80,z-40);sun.target.position.set(x,0,z);
+  if(engine)engine.frequency.value=40+Math.abs(spd)*3;
+  sp.textContent=Math.round(Math.abs(spd)*3.6);ds.textContent=(dist/1000).toFixed(1);
+  renderer.render(scene,camera);}
+loop();
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+</script>
+</body>
+</html>
