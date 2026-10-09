@@ -365,7 +365,7 @@ namespace MostWanted
             bool overrun = th < 0.1f && rpm > redline * 0.55f && kmh > 30f;
             popCooldown -= dt;
             // patlama: yüksek devirden gaz kesince; kalkışta/düşük devirde yok, en az 0.25 sn arayla
-            if (overrun && rpm > 4500f && kmh > 50f && lastThrottle > 0.8f && popCooldown <= 0f && Random.value < popChance)
+            if (PopsEnabled && overrun && rpm > 4500f && kmh > 50f && lastThrottle > 0.8f && popCooldown <= 0f && Random.value < popChance)
             {
                 popRequest = 1;
                 popCooldown = 2.5f;
@@ -476,7 +476,7 @@ namespace MostWanted
             AudioClip c; fx.PlayOneShot(extra.TryGetValue("shift", out c) ? c : AudioSynth.Shift(), 0.5f * AudioBus.Get(AudioBus.Bus.Efekt));
             if (turbo && boost > 0.4f) bovTrigger = 1;
             // Egzoz paketiyle vites atarken "BANG"
-            if (exhaustLevel >= 2 && !electric && car != null && car.rpm > car.redline * 0.7f) bangRequest = 1;
+            if (PopsEnabled && exhaustLevel >= 2 && !electric && car != null && car.rpm > car.redline * 0.7f) bangRequest = 1;
         }
 
         public void Impact(float relSpeed)
@@ -678,8 +678,12 @@ namespace MostWanted
 
         /// <summary>Patlama: perdesi düşen kalın "thud" (70–120 Hz, 40–90 ms) + çıtırtı (300–3000 Hz, 15–40 ms).
         /// Gaz kesince 2–4'lü "bap-bap-brrap" dizileri; sonuncusu uzun hırıltılı.</summary>
+        /// <summary>Egzoz patlamaları (geri tepme) tamamen kapalı (kullanıcı isteği).</summary>
+        public const bool PopsEnabled = false;
+
         void StartPop(float strength, bool chain = true)
         {
+            if (!PopsEnabled) { popQueue = 0; return; }
             float r1 = Noise() * 0.5f + 0.5f, r2 = Noise() * 0.5f + 0.5f, r3 = Noise() * 0.5f + 0.5f;
             popThump = 1f; popCrackle = 0.9f; popThumpAtk = 0f;
             popFreq = 70f + 50f * r1;
