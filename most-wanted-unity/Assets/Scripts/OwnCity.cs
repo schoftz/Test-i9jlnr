@@ -447,7 +447,8 @@ namespace MostWanted
                     Sample end = e.a == ni ? smp[0] : smp[smp.Count - 1];
                     Vector3 c = P3(n.p, n.y);
                     Vector3 d = new Vector3(end.p.x - c.x, 0, end.p.z - c.z).normalized;
-                    end.r = new Vector3(d.z, 0, -d.x);
+                    // yol ucundaki köşelerle birebir aynı noktalar (kaynak/dikişsiz): örneğin kendi sağ vektörü, dışa yöne göre işaretli
+                    if (e.a != ni) end.r = -end.r;
                     float ang = Mathf.Atan2(d.x, d.z);
                     ends.Add(new KeyValuePair<float, Sample>(ang, end));
                     widths.Add(e.Width); sws.Add(CityGen.Sidewalk(e.cls));
@@ -932,8 +933,8 @@ namespace MostWanted
                 var def = new RaceDef { name = rs.name, type = (RaceType)rs.type, laps = rs.laps, prize = rs.prize };
                 if (def.type == RaceType.Drag)
                 {
-                    if (rs.nodes.Count < 2) continue;
-                    Vector3 a = graph.nodes[junctionNode[rs.nodes[0]]], b = graph.nodes[junctionNode[rs.nodes[1]]];
+                    Vector3 a = P3(rs.dragA, rs.dragYA) + Vector3.up * 0.05f, b = P3(rs.dragB, rs.dragYB) + Vector3.up * 0.05f;
+                    if ((a - b).sqrMagnitude < 100f) continue;
                     def.route.Add(a); def.route.Add(b);
                     def.dragLanes = new[] { 2.8f, 6.4f, 10.0f };
                     races.Add(def);

@@ -62,6 +62,7 @@ namespace MostWanted.Gen
     {
         public string name; public int type; public int laps = 1; public int prize; public List<int> nodes = new List<int>();
         public List<int> special = new List<int>();
+        public V2 dragA, dragB; public float dragYA, dragYB;   // drag: düz yol parçasının uçları
     }
 
     /// <summary>
@@ -263,7 +264,8 @@ namespace MostWanted.Gen
                 ring2.Add(new V2((float)Math.Cos(a) * r2 * 0.95f, (float)Math.Sin(a) * r2 * 1.02f));
             }
             Poly(RoadClass.Boulevard, Spline(ring1, true, 12f));
-            Poly(RoadClass.Boulevard, Spline(ring2, true, 12f));
+            ring2Poly = Spline(ring2, true, 12f);
+            Poly(RoadClass.Boulevard, ring2Poly);
             // --- radyal caddeler (8 yön) — merkez ızgara kenarından otoyola
             for (int k = 0; k < 8; k++)
             {
@@ -283,6 +285,10 @@ namespace MostWanted.Gen
             // --- konut ızgarası (batı/kuzeybatı), park ve göl hariç
             Grid(RoadClass.Street, -1080f, -320f, -560f, 1060f, 95f, 95f);
             Grid(RoadClass.Street, -300f, 700f, 680f, 1100f, 100f, 105f);
+            // --- göl çevre yolu (park içi; ızgara uçları buna bağlanır)
+            var lakeRing = new List<V2>();
+            for (int k = 0; k < 16; k++) { float a = k / 16f * (float)Math.PI * 2f; lakeRing.Add(lakeC + new V2((float)Math.Cos(a), (float)Math.Sin(a)) * (lakeR + 64f)); }
+            Poly(RoadClass.Street, Spline(lakeRing, true, 8f));
             // --- sanayi
             Grid(RoadClass.Avenue, 360f, 1240f, -1560f, -820f, 175f, 185f);
             // --- banliyö (güney): kıvrımlı sokaklar
@@ -290,15 +296,29 @@ namespace MostWanted.Gen
             {
                 float z0 = -1200f - j * 135f;
                 var l = new List<V2>();
-                for (float x = -1250f; x <= 260f; x += 60f) l.Add(new V2(x, z0 + 28f * (float)Math.Sin(x / 140f + j)));
+                for (float x = -1150f; x <= 250.1f; x += 50f) l.Add(new V2(x, z0 + 28f * (float)Math.Sin(x / 140f + j)));
                 Poly(RoadClass.Street, Spline(l, false, 12f));
             }
-            for (float x = -1150f; x <= 250f; x += 280f) Line(RoadClass.Street, new V2(x, -1150f), new V2(x + 30f, -1640f));
+            for (float x = -1150f; x <= 250.1f; x += 280f)
+                Line(RoadClass.Street, new V2(x, -1200f + 28f * (float)Math.Sin(x / 140f)), new V2(x, -1605f + 28f * (float)Math.Sin(x / 140f + 3)));
             // --- liman: sahil yolu + iskeleler
             var coast = new List<V2>();
             for (float z = -1700f; z <= 1600f; z += 80f) coast.Add(new V2(SeaX(z) - 150f, z));
-            Poly(RoadClass.Coastal, Spline(coast, false, 12f));
-            for (float z = -400f; z <= 800f; z += 300f) Line(RoadClass.Street, new V2(1020f, z), new V2(SeaX(z) - 150f, z));
+            var coastP = Spline(coast, false, 12f);
+            // uçları otoyola bağla (bağlantı rampası)
+            coastP.Insert(0, ToHighway(coastP[0])); coastP.Add(ToHighway(coastP[coastP.Count - 1]));
+            Poly(RoadClass.Coastal, coastP);
+            for (float z = -400f; z <= 800f; z += 300f)
+            {
+                // iskele caddeleri: dış çevre bulvarından sahil yoluna
+                float xs = 700f;
+                for (int k = 1; k < ring2Poly.Count; k++)
+                {
+                    V2 a = ring2Poly[k - 1], b = ring2Poly[k];
+                    if (a.x > 0 && (a.z - z) * (b.z - z) <= 0f && Math.Abs(b.z - a.z) > 1e-3f) { xs = a.x + (b.x - a.x) * (z - a.z) / (b.z - a.z); break; }
+                }
+                Line(RoadClass.Street, new V2(xs - 2f, z), new V2(SeaX(z) - 150f, z));
+            }
             Planarize();
             Heights();
             PlaceBuildings();
@@ -306,7 +326,15 @@ namespace MostWanted.Gen
             Races();
         }
 
-        List<V2> hwPoly = new List<V2>();
+        List<V2> hwPoly = new List<V2>(), ring2Poly = new List<V2>();
+
+        /// <summary>Otoyolda en yakın noktanın biraz ötesi (kesişim garantisi).</summary>
+        V2 ToHighway(V2 p)
+        {
+            V2 best = p; float bd = float.MaxValue;
+            foreach (var q in hwPoly) { float d = V2.Dist(p, q); if (d < bd) { bd = d; best = q; } }
+            return best + (best - p).Norm * 6f;
+        }
 
         /// <summary>Eğriyi otoyolla ilk kesiştiği noktada bitir (kavşak = bağlantı rampası).</summary>
         List<V2> ClipToHighway(List<V2> curve)
@@ -348,7 +376,7 @@ namespace MostWanted.Gen
             var cur = new List<V2>();
             foreach (var p in pts)
             {
-                bool ok = V2.Dist(p, lakeC) > lakeR + 60f && Math.Abs(p.z - RiverZ(p.x)) > 40f;
+                bool ok = V2.Dist(p, lakeC) > lakeR + 50f && Math.Abs(p.z - RiverZ(p.x)) > 40f;
                 if (ok) cur.Add(p);
                 else { if (cur.Count > 4) polys.Add(new KeyValuePair<RoadClass, List<V2>>(c, cur)); cur = new List<V2>(); }
             }
@@ -366,11 +394,19 @@ namespace MostWanted.Gen
             if (Math.Abs(d) < 1e-6f) return false;
             V2 qp = q - p;
             t = V2.Cross(qp, s) / d; u = V2.Cross(qp, r) / d;
-            return t > 1e-4f && t < 1f - 1e-4f && u > 1e-4f && u < 1f - 1e-4f;
+            return t >= -1e-4f && t <= 1f + 1e-4f && u >= -1e-4f && u <= 1f + 1e-4f;
         }
 
         void Planarize()
         {
+            // 0) açık uçları biraz uzat: T kavşaklar gerçek kesişim olsun (artık çıkıntılar aşağıda budanır)
+            foreach (var kv in polys)
+            {
+                var pl = kv.Value; int c = pl.Count;
+                if (c < 2 || V2.Dist(pl[0], pl[c - 1]) < 0.5f) continue;
+                pl[0] = pl[0] + (pl[0] - pl[1]).Norm * 3f;
+                pl[c - 1] = pl[c - 1] + (pl[c - 1] - pl[c - 2]).Norm * 3f;
+            }
             // 1) segmentler
             var segs = new List<Seg>();
             for (int pi = 0; pi < polys.Count; pi++)
@@ -403,7 +439,7 @@ namespace MostWanted.Gen
                         if (!pairs.Add(key)) continue;
                         // otoyol yalnızca radyallerle kesişebilir (kavşak); diğerleriyle üst geçit kabul edilir → kesme
                         float t, u;
-                        if (SegX(segs[a].a, segs[a].b, segs[b].a, segs[b].b, out t, out u)) { segs[a].cuts.Add(t); segs[b].cuts.Add(u); }
+                        if (SegX(segs[a].a, segs[a].b, segs[b].a, segs[b].b, out t, out u)) { segs[a].cuts.Add(Clamp01(t)); segs[b].cuts.Add(Clamp01(u)); }
                     }
             // 3) noktaları birleştirerek düğümler; her poly zincir halinde kenarlara
             var vid = new Dictionary<long, int>();
@@ -446,14 +482,14 @@ namespace MostWanted.Gen
                     // zincir boyunca 18 m'den kısa uç → sil
                     var chain = new List<int> { v };
                     int cur = v, last = -1; float len = 0f;
-                    while (vAdj[cur].Count <= 2 && len < 18f)
+                    while (vAdj[cur].Count <= 2 && len < 45f)
                     {
                         int nx = -1; foreach (var kv in vAdj[cur]) if (kv.Key != last) { nx = kv.Key; break; }
                         if (nx < 0) break;
                         len += V2.Dist(vpos[cur], vpos[nx]); last = cur; cur = nx; chain.Add(cur);
                         if (vAdj[cur].Count != 2) break;
                     }
-                    if (len < 18f && vAdj[cur].Count >= 3)
+                    if (len < 45f && vAdj[cur].Count >= 3)
                         for (int i = 0; i < chain.Count - 1; i++) { vAdj[chain[i]].Remove(chain[i + 1]); vAdj[chain[i + 1]].Remove(chain[i]); }
                 }
             // 5) kavşaklar (derece != 2) düğüm; aradaki derece-2 zincirleri kenar
@@ -828,9 +864,28 @@ namespace MostWanted.Gen
             var toll = new RaceSpec { name = "Gişe Koşusu", type = 3, prize = 3500, nodes = Chain(new V2(-600, 1000), new V2(0, 0), new V2(600, -1000)) };
             for (int i = 6; i < toll.nodes.Count - 1; i += 7) toll.special.Add(i);
             races.Add(toll);
-            // drag: otoyol batı düzlüğü
-            int d0 = Nearest(new V2(-1480, -1400), isHw), d1 = Nearest(new V2(-1515, -500), isHw);
-            races.Add(new RaceSpec { name = "Otoyol Dragı", type = 4, prize = 2200, nodes = new List<int> { d0, d1 } });
+            // drag: otoyoldaki en düz ~420 m'lik parça (köprü/tünel dışı)
+            {
+                float bestDev = float.MaxValue; V2 ba = new V2(0, 0), bb = ba; float ya = 0, yb = 0; int bn0 = -1, bn1 = -1;
+                foreach (var e in edges)
+                {
+                    if (e.cls != RoadClass.Highway) continue;
+                    int m = e.pts.Count;
+                    var s = new float[m];
+                    for (int i = 1; i < m; i++) s[i] = s[i - 1] + V2.Dist(e.pts[i - 1], e.pts[i]);
+                    for (int i = 0; i < m; i++)
+                    {
+                        int j = i; while (j < m - 1 && s[j] - s[i] < 420f) j++;
+                        if (s[j] - s[i] < 420f) break;
+                        float dev = 0f; bool bad = false;
+                        V2 ch = (e.pts[j] - e.pts[i]).Norm;
+                        for (int k = i; k <= j; k++) { dev = Math.Max(dev, Math.Abs(V2.Cross(ch, e.pts[k] - e.pts[i]))); if (e.bridge[k] || e.tunnel[k]) bad = true; }
+                        dev += Math.Abs(e.ys[j] - e.ys[i]) * 0.05f;
+                        if (!bad && dev < bestDev) { bestDev = dev; ba = e.pts[i]; bb = e.pts[j]; ya = e.ys[i]; yb = e.ys[j]; bn0 = e.a; bn1 = e.b; }
+                    }
+                }
+                if (bn0 >= 0) races.Add(new RaceSpec { name = "Otoyol Dragı", type = 4, prize = 2200, nodes = new List<int> { bn0, bn1 }, dragA = ba, dragB = bb, dragYA = ya, dragYB = yb });
+            }
             // garaj: merkez kenarında, bir caddede
             garageNode = Nearest(new V2(-165f, -330f), notHw);
             var gn = nodes[garageNode];
@@ -870,7 +925,7 @@ namespace MostWanted.Gen
             sb.AppendFormat(inv, "],\"lake\":[{0},{1},{2}],\"sea\":[", lakeC.x, lakeC.z, lakeR);
             for (float z = -2400f; z <= 2400f; z += 100f) { if (z > -2400f) sb.Append(','); sb.AppendFormat(inv, "[{0:0},{1:0}]", SeaX(z), z); }
             sb.Append("],\"races\":[");
-            for (int i = 0; i < races.Count; i++) { if (i > 0) sb.Append(','); sb.Append("{\"name\":\"" + races[i].name + "\",\"type\":" + races[i].type + ",\"nodes\":[" + string.Join(",", races[i].nodes) + "]}"); }
+            for (int i = 0; i < races.Count; i++) { if (i > 0) sb.Append(','); var rr = races[i]; sb.Append("{\"name\":\"" + rr.name + "\",\"drag\":[" + string.Format(inv, "{0:0.0},{1:0.0},{2:0.0},{3:0.0}", rr.dragA.x, rr.dragA.z, rr.dragB.x, rr.dragB.z) + "],\"type\":" + rr.type + ",\"nodes\":[" + string.Join(",", races[i].nodes) + "]}"); }
             sb.AppendFormat(inv, "],\"garage\":{0},\"districts\":[", garageNode);
             for (int i = 0; i < districts.Count; i++) { if (i > 0) sb.Append(','); sb.AppendFormat(inv, "[\"{0}\",{1:0},{2:0}]", districts[i].Key, districts[i].Value.x, districts[i].Value.z); }
             sb.Append("]}");
