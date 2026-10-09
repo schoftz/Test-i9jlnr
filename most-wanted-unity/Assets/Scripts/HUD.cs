@@ -86,7 +86,7 @@ namespace MostWanted
             float W = Screen.width / scale, H = RefH;
             GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(scale, scale, 1f));
 
-            if (g.menu == Game.Menu.None || g.menu == Game.Menu.Pause) DrawHUD(g, W, H);
+            if ((g.menu == Game.Menu.None || g.menu == Game.Menu.Pause) && !TitleScreen.Active) DrawHUD(g, W, H);   // başlık ekranından açılan ayarlarda HUD yok
             switch (g.menu)
             {
                 case Game.Menu.Pause: case Game.Menu.Credits: PauseMenu.Get().Draw(g); break;   // UI/PauseMenu.cs

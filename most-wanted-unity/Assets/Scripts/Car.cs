@@ -67,6 +67,8 @@ namespace MostWanted
         public Transform[] wheelVis = new Transform[4];
         public List<Material> paintMats = new List<Material>();
         public List<Material> brakeMats = new List<Material>();
+        /// <summary>Fren lambası parlaklık çarpanı (trafik: 2.5 → bloom).</summary>
+        [System.NonSerialized] public float brakeGlow = 1f;
         public List<Material> headMats = new List<Material>();
         public List<Transform> flames = new List<Transform>();
         public List<Transform> exhaustTips = new List<Transform>();
@@ -657,7 +659,7 @@ namespace MostWanted
                 if (camberDeg != 0f) q = Quaternion.AngleAxis((i % 2 == 0 ? -1f : 1f) * camberDeg, transform.forward) * q;
                 wheelVis[i].SetPositionAndRotation(p, q);
             }
-            float b = braking || handbrake ? 3f : 0.6f;
+            float b = braking || handbrake ? 3f * brakeGlow : 0.6f;
             foreach (var m in brakeMats) U.SetEmission(m, new Color(1f, 0.05f, 0.03f) * b);
         }
 

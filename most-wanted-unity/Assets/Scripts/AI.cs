@@ -55,13 +55,35 @@ namespace MostWanted
         }
     }
 
-    /// <summary>Şeritte giden, kavşakta dönen trafik. Uzakta kinematik (ucuz) moda geçer.</summary>
+    /// <summary>Trafik ışığı sağlayıcısı (MapDressing ya da ileride kendi şehrimizin ışıkları).</summary>
+    public interface ITrafficLights
+    {
+        /// <summary>prev→next yönünde gelen araç için next düğümündeki ışık kırmızı mı?</summary>
+        bool IsRed(int prev, int next);
+    }
+
+    /// <summary>
+    /// Şeritte giden, kavşakta dönen trafik. Yol: şerit çizgisi (yöne göre sağ şerit) → kavşakta şerit çıkışından
+    /// yeni şerit girişine ikinci derece Bezier eğrisi → sonraki şerit. Viraj ve öndeki araç için yavaşlar,
+    /// kırmızıda durur, dönüşten 1.5 sn önce sinyal verir. Uzakta kinematik (ucuz) moda geçer ve aynı yolda kayar.
+    /// </summary>
     public class TrafficDriver : AIDriver
     {
         public int prevNode, nextNode;
         public bool far, hidden;
 
-        public void Init(int a, int b) { prevNode = a; nextNode = b; }
+        // ---- planlı yol (yalnızca sivil trafik; polis devriyesi eski basit mantığı kullanır)
+        int afterNode = -1;
+        readonly List<Vector3> path = new List<Vector3>(16);
+        int seg, idxE, idxX;          // geçerli parça, şerit çıkışı (E) ve yeni şerit girişi (X) indeksleri
+        float turnSign;               // -1 sol, +1 sağ, 0 düz
+        float turnSpeed = 99f;        // virajın güvenli hızı (km/s)
+        bool redLatched;              // çizgiyi geçtiyse artık ışığa bakma
+        float signalOnUntil;
+        public bool braking;          // dış (ışık/öndeki araç) frenleme
+        public TurnSignals signals;
+
+        public void Init(int a, int b) { prevNode = a; nextNode = b; afterNode = -1; path.Clear(); seg = 0; redLatched = false; }
 
         protected static bool WorldReady { get { return Game.I != null && Game.I.world != null && Game.I.world.graph != null && Game.I.world.graph.nodes.Count > 1; } }
 
@@ -80,10 +102,83 @@ namespace MostWanted
             }
         }
 
+        bool Civil { get { return GetType() == typeof(TrafficDriver); } }
+
+        static ITrafficLights Lights
+        {
+            get
+            {
+                if (MapDressing.I != null) return MapDressing.I;
+                return Game.I != null ? Game.I.world as ITrafficLights : null;
+            }
+        }
+
         int frame;
         protected override void Think()
         {
-            if (GetType() == typeof(TrafficDriver) && ((++frame + GetHashCode()) & 1) == 0) return; // kademeli YZ
+            if (!Civil) { LegacyThink(); return; }
+            if (((++frame + GetHashCode()) & 1) == 0) return; // kademeli YZ (2 fizik adımında bir)
+            if (!WorldReady) return;
+            Vector3 p = transform.position;
+            if (!Track(p)) { DriveTo(LaneTarget(), cruiseKmh * 0.5f, true); return; }
+
+            float v = U.Vel(car.rb).magnitude;
+            float kmh = v * 3.6f;
+            float look = 5f + v * 0.55f;
+            Vector3 aim = Lookahead(p, look);
+
+            // ---- hız planı
+            float want = cruiseKmh;
+            float dE = DistAlong(p, idxE);       // şerit çıkışına (kavşak girişine) kalan yol
+            bool inTurn = seg >= idxE && seg < idxX;
+            const float decel = 3.2f;            // m/s² konforlu fren
+            if (turnSign != 0f)
+            {
+                if (inTurn) want = Mathf.Min(want, turnSpeed);
+                else want = Mathf.Min(want, Mathf.Sqrt(turnSpeed / 3.6f * turnSpeed / 3.6f + 2f * decel * Mathf.Max(0f, dE - 2f)) * 3.6f);
+            }
+            // kırmızı ışık: çıkış çizgisinde dur
+            braking = false;
+            var L = Lights;
+            if (!inTurn && !redLatched && L != null && dE < 45f)
+            {
+                if (dE < 1.5f && kmh > 8f) redLatched = true;   // çizgiyi geçti, devam
+                else if (L.IsRed(prevNode, nextNode))
+                {
+                    float stop = Mathf.Sqrt(2f * decel * Mathf.Max(0f, dE - 2.5f)) * 3.6f;
+                    if (stop < want) { want = stop; braking = true; }
+                }
+            }
+            // öndeki araç (yol yönünde küre taraması)
+            Vector3 fwdDir = U.Flat(aim - p);
+            if (fwdDir.sqrMagnitude > 0.01f)
+            {
+                fwdDir.Normalize();
+                RaycastHit hit;
+                Vector3 origin = p + Vector3.up * 0.9f + transform.forward * 2.4f;
+                float dist = 8f + v * 1.6f;
+                if (Physics.SphereCast(origin, 1.0f, fwdDir, out hit, dist) && hit.rigidbody != null && hit.rigidbody != car.rb)
+                {
+                    float other = Vector3.Dot(U.Vel(hit.rigidbody), fwdDir) * 3.6f;
+                    float gap = hit.distance - 3.5f;
+                    float safe = Mathf.Max(0f, Mathf.Max(0f, other) + gap * 2.4f - 4f);
+                    if (gap < 1f) safe = 0f;
+                    if (safe < want) { want = safe; braking = braking || kmh > safe + 3f; }
+                }
+            }
+
+            // ---- sinyal: dönüşten 1.5 sn önce ve viraj boyunca
+            bool signal = turnSign != 0f && (inTurn || dE / Mathf.Max(v, 2f) < 1.5f);
+            if (signal) signalOnUntil = Time.time + 0.4f;
+            if (signals != null) signals.Set(Time.time < signalOnUntil ? turnSign : 0f);
+
+            DriveTo(aim, want, false, 1.15f);
+            if (want < 1f && kmh < 3f) { car.throttle = 0f; car.handbrake = true; }   // bekle (fren lambası yanar)
+            if (car.throttle < -0.05f) braking = true;
+        }
+
+        void LegacyThink()
+        {
             Vector3 tgt = LaneTarget();
             AdvanceIfReached(tgt);
             tgt = LaneTarget();
@@ -94,6 +189,140 @@ namespace MostWanted
             DriveTo(tgt, want, true);
         }
 
+        // ------------------------------------------------------------ yol planı
+        static Vector3 Right(Vector3 d) { return new Vector3(d.z, 0f, -d.x); }
+
+        int PickAfter(RoadGraph g, int prev, int node)
+        {
+            var adj = g.adj[node];
+            if (adj.Count == 0) return prev;
+            if (adj.Count == 1) return adj[0];
+            for (int k = 0; k < 6; k++) { int n = adj[Random.Range(0, adj.Count)]; if (n != prev) return n; }
+            foreach (int n in adj) if (n != prev) return n;
+            return prev;
+        }
+
+        void BuildPath()
+        {
+            var g = Game.I.world.graph;
+            path.Clear(); seg = 0; redLatched = false;
+            if (afterNode < 0 || afterNode >= g.nodes.Count) afterNode = PickAfter(g, prevNode, nextNode);
+            Vector3 A = g.nodes[prevNode], B = g.nodes[nextNode], C = g.nodes[afterNode];
+            Vector3 dIn = U.Flat(B - A), dOut = U.Flat(C - B);
+            float lIn = dIn.magnitude, lOut = dOut.magnitude;
+            if (lIn < 0.01f) dIn = transform.forward; else dIn /= lIn;
+            if (lOut < 0.01f) dOut = dIn; else dOut /= lOut;
+            Vector3 rIn = Right(dIn), rOut = Right(dOut);
+            float offIn = Mathf.Min(g.lane[prevNode], g.lane[nextNode]);
+            float offOut = Mathf.Min(g.lane[nextNode], g.lane[afterNode]);
+            float ang = Vector3.SignedAngle(dIn, dOut, Vector3.up);
+            float absAng = Mathf.Abs(ang);
+            bool junction = g.adj[nextNode].Count > 2;
+            float r = absAng < 12f ? 2f : Mathf.Max(offIn, offOut) * 1.4f + (junction ? 3f : 1.5f);
+            r = Mathf.Clamp(r, 1.5f, 0.45f * Mathf.Max(2f, Mathf.Min(lIn, lOut)));
+
+            Vector3 S = A + rIn * offIn;
+            Vector3 E = B - dIn * r + rIn * offIn;
+            Vector3 X = B + dOut * r + rOut * offOut;
+            // kontrol noktası: iki şerit doğrusunun kesişimi
+            Vector3 ctrl;
+            float cross = dIn.x * dOut.z - dIn.z * dOut.x;
+            if (absAng > 150f) ctrl = B + dIn * r;                         // çıkmaz: U dönüşü
+            else if (Mathf.Abs(cross) < 0.08f) ctrl = (E + X) * 0.5f;      // düz
+            else
+            {
+                Vector3 w = X - E;
+                float t = (w.x * dOut.z - w.z * dOut.x) / cross;
+                ctrl = E + dIn * t;
+                if (U.FlatDist(ctrl, B) > r * 3f) ctrl = (E + X) * 0.5f;
+            }
+            float yB = B.y;
+            path.Add(new Vector3(S.x, A.y, S.z));
+            path.Add(new Vector3(E.x, Mathf.Lerp(A.y, yB, lIn > 0.01f ? 1f - r / lIn : 1f), E.z));
+            idxE = path.Count - 1;
+            for (int i = 1; i < 6; i++)
+            {
+                float t = i / 6f, u = 1f - t;
+                Vector3 q = u * u * E + 2f * u * t * ctrl + t * t * X;
+                path.Add(new Vector3(q.x, yB, q.z));
+            }
+            path.Add(new Vector3(X.x, Mathf.Lerp(yB, C.y, lOut > 0.01f ? r / lOut : 0f), X.z));
+            idxX = path.Count - 1;
+            Vector3 F = C + rOut * offOut;
+            path.Add(new Vector3(F.x, C.y, F.z));
+
+            turnSign = absAng > 25f && absAng <= 150f ? Mathf.Sign(ang) : 0f;
+            if (absAng > 150f) turnSign = -1f;   // U dönüşü sola
+            // güvenli viraj hızı: yarıçap ≈ r / tan(θ/2), yanal ivme 3 m/s²
+            float rad = absAng < 5f ? 999f : (r + 0.5f) / Mathf.Max(0.05f, Mathf.Tan(absAng * 0.5f * Mathf.Deg2Rad));
+            turnSpeed = Mathf.Clamp(Mathf.Sqrt(3f * rad) * 3.6f, 14f, cruiseKmh);
+        }
+
+        /// <summary>Yolu günceller; X'i geçince bir sonraki parçaya kayar. false: yol yok.</summary>
+        bool Track(Vector3 p)
+        {
+            var g = Game.I.world.graph;
+            if (prevNode < 0 || nextNode < 0 || prevNode >= g.nodes.Count || nextNode >= g.nodes.Count) return false;
+            if (path.Count < 2) BuildPath();
+            for (int guard = 0; guard < 4; guard++)
+            {
+                while (seg < path.Count - 2 && SegT(p, seg) >= 1f) seg++;
+                if (seg < idxX) break;
+                // yeni şeride geçti: bir sonraki kavşağı planla
+                int a = nextNode, b = afterNode;
+                prevNode = a; nextNode = b; afterNode = -1;
+                BuildPath();
+            }
+            // yoldan çok saptıysa (çarpışma vb.) en yakın düğümden yeniden başla
+            Vector3 q = Project(p, seg);
+            if (U.FlatDist(p, q) > 22f)
+            {
+                int n = g.Nearest(p);
+                if (g.adj[n].Count == 0) return false;
+                int best = g.adj[n][0]; float bd = -2f;
+                foreach (int m in g.adj[n]) { float dd = Vector3.Dot(U.Flat(g.nodes[m] - g.nodes[n]).normalized, transform.forward); if (dd > bd) { bd = dd; best = m; } }
+                Init(n, best);
+                BuildPath();
+            }
+            return true;
+        }
+
+        float SegT(Vector3 p, int i)
+        {
+            Vector3 a = path[i], b = path[i + 1];
+            float dx = b.x - a.x, dz = b.z - a.z, l2 = dx * dx + dz * dz;
+            if (l2 < 0.0001f) return 1f;
+            return ((p.x - a.x) * dx + (p.z - a.z) * dz) / l2;
+        }
+
+        Vector3 Project(Vector3 p, int i)
+        {
+            float t = Mathf.Clamp01(SegT(p, i));
+            return Vector3.Lerp(path[i], path[i + 1], t);
+        }
+
+        Vector3 Lookahead(Vector3 p, float dist)
+        {
+            Vector3 cur = Project(p, seg);
+            for (int i = seg; i < path.Count - 1; i++)
+            {
+                Vector3 nx = path[i + 1];
+                float l = U.FlatDist(cur, nx);
+                if (l >= dist) return Vector3.Lerp(cur, nx, dist / Mathf.Max(l, 0.001f));
+                dist -= l; cur = nx;
+            }
+            return cur;
+        }
+
+        float DistAlong(Vector3 p, int idx)
+        {
+            if (seg >= idx) return 0f;
+            Vector3 cur = Project(p, seg);
+            float d = 0f;
+            for (int i = seg; i < idx; i++) { d += U.FlatDist(cur, path[i + 1]); cur = path[i + 1]; }
+            return d;
+        }
+
         /// <summary>Uzak trafik: fizik kapalı, şerit boyunca kayar.</summary>
         public void SetFar(bool f)
         {
@@ -102,11 +331,26 @@ namespace MostWanted
             far = f;
             car.rb.isKinematic = f;
             if (!f) car.SetSpeed(cruiseKmh * 0.8f);
+            if (f && signals != null) signals.Set(0f);
         }
 
         void Update()
         {
             if (!far || hidden || !WorldReady) return;
+            if (!Civil) { LegacyFarUpdate(); return; }
+            Vector3 p = transform.position;
+            if (!Track(p)) return;
+            float step = cruiseKmh / 3.6f * Time.deltaTime;
+            if (seg >= idxE && seg < idxX) step *= Mathf.Clamp01(turnSpeed / Mathf.Max(1f, cruiseKmh));
+            Vector3 tgt = Lookahead(p, step);
+            Vector3 dir = U.Flat(Lookahead(p, 4f) - p);
+            Vector3 np = new Vector3(tgt.x, tgt.y + 0.05f, tgt.z);
+            car.rb.MovePosition(np);
+            if (dir.sqrMagnitude > 0.01f) car.rb.MoveRotation(Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(dir.normalized), Time.deltaTime * 5f));
+        }
+
+        void LegacyFarUpdate()
+        {
             Vector3 tgt = LaneTarget();
             AdvanceIfReached(tgt, 3f);
             tgt = LaneTarget();
@@ -117,6 +361,66 @@ namespace MostWanted
             Quaternion nr = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(to.normalized), Time.deltaTime * 4f);
             car.rb.MovePosition(np);
             car.rb.MoveRotation(nr);
+        }
+    }
+
+    /// <summary>Sivil trafik sinyal lambaları: dönüş tarafında yanıp sönen amber emisyon (paylaşılan iki malzeme).</summary>
+    public class TurnSignals : MonoBehaviour
+    {
+        static Material onMat, offMat;
+        static Mesh cube;
+        Renderer[] left, right;
+        float side;
+
+        public static TurnSignals Attach(CarController car, Bounds localBounds)
+        {
+            if (onMat == null) onMat = U.NewMat(new Color(1f, 0.55f, 0.05f), 0.6f, 0f);
+            U.SetEmission(onMat, new Color(1f, 0.5f, 0.02f) * 6f);
+            if (offMat == null) offMat = U.NewMat(new Color(0.35f, 0.2f, 0.05f), 0.6f, 0f);
+            if (cube == null)
+            {
+                var tmp = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                cube = tmp.GetComponent<MeshFilter>().sharedMesh;
+                Object.Destroy(tmp);
+            }
+            var s = car.gameObject.AddComponent<TurnSignals>();
+            Vector3 c = localBounds.center, e = localBounds.extents;
+            float y = c.y + e.y * 0.05f;
+            float x = Mathf.Max(0.5f, e.x - 0.04f), zf = e.z - 0.03f, zr = -e.z + 0.03f;
+            s.left = new[] { s.Lamp(car.transform, new Vector3(c.x - x, y, c.z + zf)), s.Lamp(car.transform, new Vector3(c.x - x, y, c.z + zr)) };
+            s.right = new[] { s.Lamp(car.transform, new Vector3(c.x + x, y, c.z + zf)), s.Lamp(car.transform, new Vector3(c.x + x, y, c.z + zr)) };
+            s.Apply(false, false);
+            return s;
+        }
+
+        Renderer Lamp(Transform parent, Vector3 lp)
+        {
+            var go = new GameObject("Sinyal");
+            go.layer = OptimizationManager.TrafficLayer;
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = lp;
+            go.transform.localScale = new Vector3(0.16f, 0.09f, 0.1f);
+            go.AddComponent<MeshFilter>().sharedMesh = cube;
+            var r = go.AddComponent<MeshRenderer>();
+            r.sharedMaterial = offMat;
+            r.shadowCastingMode = ShadowCastingMode.Off;
+            return r;
+        }
+
+        /// <summary>-1 sol, +1 sağ, 0 kapalı.</summary>
+        public void Set(float s) { side = s; if (s == 0f) Apply(false, false); }
+
+        void Update()
+        {
+            if (side == 0f) return;
+            bool on = Mathf.Repeat(Time.time, 0.8f) < 0.42f;
+            Apply(side < 0f && on, side > 0f && on);
+        }
+
+        void Apply(bool l, bool r)
+        {
+            if (left != null) foreach (var x in left) if (x != null) x.sharedMaterial = l ? onMat : offMat;
+            if (right != null) foreach (var x in right) if (x != null) x.sharedMaterial = r ? onMat : offMat;
         }
     }
 
@@ -306,75 +610,159 @@ namespace MostWanted
 
     public class TrafficManager : MonoBehaviour
     {
+        /// <summary>Havuz üst sınırı (OptimizationManager kaliteye göre ayarlar). Etkin sayı bölge yoğunluğuyla çarpılır.</summary>
         public int count = 14;
         public readonly List<TrafficDriver> cars = new List<TrafficDriver>();
-        float check;
+        public float density = 1f;
+        public const float SpawnMin = 120f, SpawnMax = 330f;
+        float check, densityTimer;
 
         void Update()
         {
             var g = Game.I;
-            if (g.player == null || g.world.graph.nodes.Count < 4) return;
+            if (g == null || g.player == null || g.world == null || g.world.graph.nodes.Count < 4) return;
             check -= Time.deltaTime;
             if (check > 0f) return;
             check = 0.4f;
             Vector3 pp = g.player.transform.position;
+            densityTimer -= 0.4f;
+            if (densityTimer <= 0f) { densityTimer = 2f; density = DensityAt(g, pp); }
+            int target = Mathf.Clamp(Mathf.RoundToInt(count * density), 2, count);
+
             cars.RemoveAll(c => c == null);
+            int active = 0;
+            foreach (var c in cars) if (!c.hidden) active++;
+            Vector3 fwd = U.Flat(g.player.transform.forward).normalized;
             foreach (var c in cars)
             {
-                float d = U.FlatDist(c.transform.position, pp);
-                if (c.hidden) { Respawn(c, pp); continue; }
-                if (d > 400f) Respawn(c, pp);
+                if (c.hidden)
+                {
+                    if (active < target && Respawn(c, pp)) active++;
+                    continue;
+                }
+                Vector3 to = U.Flat(c.transform.position - pp);
+                float d = to.magnitude;
+                bool behind = d > 1f && Vector3.Dot(to / d, fwd) < -0.3f;
+                bool farBehind = d > 220f && behind && !Visible(c.transform.position);
+                if (d > 420f || farBehind || (active > target && d > SpawnMin && !Visible(c.transform.position)))
+                {
+                    Park(c); active--;
+                    if (active < target && Respawn(c, pp)) active++;
+                }
                 else c.SetFar(d > 120f);
             }
-            if (cars.Count < count) Spawn(pp);
-            while (cars.Count > count) { Destroy(cars[cars.Count - 1].gameObject); cars.RemoveAt(cars.Count - 1); }
+            if (cars.Count < count && active < target) Spawn(pp);
+        }
+
+        /// <summary>Bölge trafik yoğunluğu: merkez kalabalık, banliyö/otoyol seyrek.</summary>
+        static float DensityAt(Game g, Vector3 p)
+        {
+            string name = "";
+            var own = g.world as OwnCity;
+            if (own != null && own.gen != null && own.gen.districts.Count > 0)
+            {
+                float bd = float.MaxValue;
+                foreach (var d in own.gen.districts)
+                {
+                    float dx = d.Value.x - p.x, dz = d.Value.z - p.z, dd = dx * dx + dz * dz;
+                    if (dd < bd) { bd = dd; name = d.Key; }
+                }
+            }
+            else if (g.dressing != null) name = g.dressing.DistrictAt(p);
+            if (string.IsNullOrEmpty(name)) return 1f;
+            if (name.Contains("Merkez") || name.Contains("Downtown") || name.Contains("Center")) return 1f;
+            if (name.Contains("Liman")) return 0.8f;
+            if (name.Contains("Sanayi")) return 0.65f;
+            if (name.Contains("Otoyol")) return 0.45f;
+            if (name.Contains("Banliyö") || name.Contains("Konut") || name.Contains("Park")) return 0.5f;
+            return 0.75f;
+        }
+
+        static bool Visible(Vector3 p)
+        {
+            var cam = Game.I != null ? Game.I.cam : null;
+            if (cam == null) return false;
+            Vector3 v = cam.WorldToViewportPoint(p + Vector3.up * 0.8f);
+            return v.z > -3f && v.x > -0.15f && v.x < 1.15f && v.y > -0.2f && v.y < 1.2f;
         }
 
         void Spawn(Vector3 near)
         {
             var list = Catalog.Traffic;
+            if (list.Count == 0) return;
             var def = list[Random.Range(0, list.Count)];
             var col = Catalog.Paints[Random.Range(0, Catalog.Paints.Length)];
-            var car = CarFactory.Build(def, col, new Vector3(0, -200, 0), Quaternion.identity, CarRole.Traffic, null, "Trafik");
+            Vector3 at = new Vector3(0, -200, 0);
+            var car = CarFactory.Build(def, col, at, Quaternion.identity, CarRole.Traffic, null, "Trafik");
             // trafik: sakin sürüş
             car.peakTorque *= 0.6f;
             car.topSpeed = Mathf.Min(car.topSpeed, 140f);
+            car.brakeGlow = 2.5f;   // fren lambaları frenlerken bloom yapsın
+            bool any = false; Bounds b = new Bounds(at, Vector3.zero);
             foreach (var r in car.GetComponentsInChildren<Renderer>(true))
+            {
                 if (r.gameObject.layer != U.IconLayer) r.gameObject.layer = OptimizationManager.TrafficLayer;
+                else continue;
+                if (r is ParticleSystemRenderer) continue;
+                if (!any) { b = r.bounds; any = true; } else b.Encapsulate(r.bounds);
+            }
             var d = car.gameObject.AddComponent<TrafficDriver>();
             d.cruiseKmh = Random.Range(40f, 65f);
+            if (!any || b.size.x < 1f || b.size.z < 2f) b = new Bounds(at + Vector3.up * 0.7f, new Vector3(1.8f, 1.4f, def.length));
+            b.center -= at;
+            try { d.signals = TurnSignals.Attach(car, b); } catch (System.Exception e) { Debug.LogWarning("Sinyal lambası eklenemedi: " + e.Message); }
             cars.Add(d);
+            Park(d);
             Respawn(d, near);
         }
 
-        public void Respawn(TrafficDriver d, Vector3 near)
+        /// <summary>Aracı gizler (havuzda bekler).</summary>
+        void Park(TrafficDriver d)
+        {
+            d.car.rb.isKinematic = true; d.far = true; d.hidden = true;
+            if (d.signals != null) d.signals.Set(0f);
+            Vector3 p = d.transform.position;
+            d.car.Teleport(new Vector3(p.x, -500f, p.z), Quaternion.identity);
+        }
+
+        /// <summary>Oyuncudan ≥120 m uzakta ve kamera görüşü dışında bir şeride yerleştirir. false: uygun yer yok (gizli kalır).</summary>
+        public bool Respawn(TrafficDriver d, Vector3 near)
         {
             var graph = Game.I.world.graph;
-            int a = graph.RandomNodeAround(near, 90f, 330f);
-            var adj = graph.adj[a];
-            if (adj.Count == 0) return;
-            int b = adj[Random.Range(0, adj.Count)];
-            Vector3 pa = graph.nodes[a], pb = graph.nodes[b];
-            Vector3 lp = graph.LanePoint(a, b);
-            Vector3 pos = Vector3.Lerp(pa + (lp - pb), lp, 0.3f) + Vector3.up * 0.4f;
-            if (U.CarNearby(pos, 4.5f, d.car.rb) || (Game.I.player != null && U.FlatDist(pos, Game.I.player.transform.position) < 60f))
+            Vector3 pp = Game.I.player != null ? Game.I.player.transform.position : near;
+            for (int tries = 0; tries < 6; tries++)
             {
-                // uygun değil: gizle, bir sonraki kontrolde tekrar dene
-                d.car.rb.isKinematic = true; d.far = true; d.hidden = true;
-                d.car.Teleport(new Vector3(pos.x, -500f, pos.z), Quaternion.identity);
+                int a = graph.RandomNodeAround(near, SpawnMin, SpawnMax);
+                var adj = graph.adj[a];
+                if (adj.Count == 0) continue;
+                int b = adj[Random.Range(0, adj.Count)];
+                Vector3 pa = graph.nodes[a], pb = graph.nodes[b];
+                Vector3 dir = U.Flat(pb - pa);
+                if (dir.sqrMagnitude < 1f) continue;
+                dir.Normalize();
+                float off = Mathf.Min(graph.lane[a], graph.lane[b]);
+                Vector3 pos = Vector3.Lerp(pa, pb, Random.Range(0.25f, 0.6f)) + new Vector3(dir.z, 0, -dir.x) * off + Vector3.up * 0.4f;
+                if (U.FlatDist(pos, pp) < SpawnMin || Visible(pos)) continue;
+                if (U.CarNearby(pos, 6f, d.car.rb)) continue;
+                d.hidden = false;
+                d.car.Teleport(pos, Quaternion.LookRotation(dir));
                 d.Init(a, b);
-                return;
+                if (Random.value < 0.5f && d.car.paintMats != null)
+                {
+                    var col = Catalog.Paints[Random.Range(0, Catalog.Paints.Length)];
+                    foreach (var m in d.car.paintMats) U.ApplyPaint(m, col);
+                }
+                d.far = false; d.car.rb.isKinematic = false;
+                d.SetFar(U.FlatDist(pos, pp) > 120f);
+                return true;
             }
-            d.hidden = false;
-            d.car.Teleport(pos, Quaternion.LookRotation(U.Flat(pb - pa).normalized));
-            d.Init(a, b);
-            d.far = false; d.car.rb.isKinematic = false;
-            d.SetFar(U.FlatDist(pos, near) > 120f);
+            if (!d.hidden) Park(d);
+            return false;
         }
 
         public void ClearAround(Vector3 p, float r)
         {
-            foreach (var c in cars) if (c != null && U.FlatDist(c.transform.position, p) < r) Respawn(c, p + new Vector3(500, 0, 500));
+            foreach (var c in cars) if (c != null && !c.hidden && U.FlatDist(c.transform.position, p) < r) { Park(c); Respawn(c, p + new Vector3(500, 0, 500)); }
         }
     }
 

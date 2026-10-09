@@ -14,7 +14,7 @@ namespace MostWanted
     {
         public static Game I;
 
-        public enum Menu { None, Pause, Garage, Jobs, Map, Credits, Blacklist }
+        public enum Menu { None, Pause, Garage, Jobs, Map, Credits, Blacklist, Title }
         public Menu menu = Menu.None;
 
         [System.NonSerialized] public World world;
@@ -86,7 +86,7 @@ namespace MostWanted
             sfx.spatialBlend = 0f;
             RenderPipelineManager.beginCameraRendering += OnBeginCam;
             RenderPipelineManager.endCameraRendering += OnEndCam;
-            Init();
+            StartCoroutine(InitCo(true));   // UI/LoadingScreen + UI/TitleScreen
         }
 
         void OnDestroy()
@@ -106,11 +106,14 @@ namespace MostWanted
         }
 
         // ------------------------------------------------------------------ kurulum
-        void Init()
+        IEnumerator InitCo(bool title)
         {
             foreach (var c in Camera.allCameras) if (c != null) Destroy(c.gameObject);
             var dl = GameObject.Find("Directional Light");
             if (dl != null) Destroy(dl);
+            LoadingScreen.Begin();
+            LoadingScreen.Set(0.05f, "Şehir kuruluyor...");
+            yield return null; yield return null;
 
             world = null;
             usingImportedMap = false;
@@ -140,6 +143,8 @@ namespace MostWanted
                 }
                 catch (System.Exception e) { Debug.LogWarning("Harita yüklenemedi: " + e.Message); }
             }
+            LoadingScreen.Set(0.15f, "Yol ağı ve binalar oluşturuluyor...");
+            if (world == null && mapMode == 0) yield return null;
             if (world == null && mapMode == 0)
             {
                 try { var own = new OwnCity(); own.Build(); world = own; }
@@ -153,6 +158,10 @@ namespace MostWanted
                 foreach (var p in city.breakerSites) breakers.Add(PursuitBreaker.Create(p, city.breakerKinds[breakers.Count], city.root));
             }
 
+            LoadingScreen.Set(0.55f, "Şehir hazır: " + MapNames[Mathf.Clamp(mapMode, 0, 2)]);
+            yield return null;
+            LoadingScreen.Set(0.6f, "Harita süsleniyor...");
+            yield return null;
             dressing = null;
             if (!(world is City) && !(world is OwnCity) && SaveSystem.Data.dressing)
             {
@@ -160,12 +169,16 @@ namespace MostWanted
                 catch (System.Exception e) { Debug.LogWarning("Harita süsleme başarısız: " + e); }
             }
 
+            LoadingScreen.Set(0.72f, "Işıklar ve kameralar...");
+            yield return null;
             SetupLighting();
             SetupCameras();
             SetupPost();
             ApplyAtmosphere(SaveSystem.Data.atmosphere);
             if (dressing != null) dressing.SetWet(SaveSystem.Data.wet);
 
+            LoadingScreen.Set(0.85f, "Trafik ve polis hazırlanıyor...");
+            yield return null;
             traffic = gameObject.AddComponent<TrafficManager>();
             police = gameObject.AddComponent<PoliceManager>();
             race = gameObject.AddComponent<RaceManager>();
@@ -179,6 +192,18 @@ namespace MostWanted
             if (world is City) ((City)world).MarkDetailLayers();
             SpawnPlayer(world.garagePos + Vector3.up * 0.5f, world.garageRot);
             rig.Snap();
+            LoadingScreen.Set(0.95f, "Oyuncu aracı hazırlanıyor...");
+            yield return null;
+            LoadingScreen.Set(1f, "Hazır!");
+            yield return null;
+            LoadingScreen.End();
+            if (title) TitleScreen.Show(this);   // yalnızca oyun açılışında (harita değişiminde/yeniden doğuşta değil)
+            else Toast("Harita yüklendi: " + MapNames[mapMode]);
+        }
+
+        /// <summary>TitleScreen oyuna geçtiğinde çağırır.</summary>
+        public void WelcomeToast()
+        {
             Toast("Most Wanted'a hoş geldin! Garaj: E  •  İşler: J  •  Kara Liste: B  •  Harita: M");
         }
 
@@ -190,6 +215,7 @@ namespace MostWanted
 
         IEnumerator Rebuild()
         {
+            LoadingScreen.Begin();   // harita değişimi: yükleme ekranı hemen gelsin
             CloseMenu();
             race.Abort();
             police.EndPursuit(false);
@@ -199,7 +225,7 @@ namespace MostWanted
             player = null;
             yield return null;
             yield return null;
-            Init();
+            yield return StartCoroutine(InitCo(false));
         }
 
         public void SwitchMap(bool imported) { SetMap(imported ? 1 : 2); }
@@ -469,7 +495,7 @@ namespace MostWanted
 
         void HandleKeys()
         {
-            if (menu == Menu.Garage) return;   // garaj kendi tuşlarını işler (GarageStage)
+            if (menu == Menu.Garage || menu == Menu.Title) return;   // garaj / başlık ekranı kendi tuşlarını işler
             if (Input.GetKeyDown(KeyCode.Escape))
             {
                 if (menu == Menu.None) OpenMenu(Menu.Pause);

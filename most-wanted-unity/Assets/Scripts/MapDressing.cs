@@ -13,7 +13,7 @@ namespace MostWanted
     ///  - Yaya geçidi, rögar, ıslak zemin modu, bulut kubbesi, kuşlar/uçak, şehir ambiyans sesi, semt isimleri
     /// Her şey GPU instancing ile çizilir ve kalite ön ayarına göre sayı/mesafe ölçeklenir.
     /// </summary>
-    public class MapDressing : MonoBehaviour
+    public class MapDressing : MonoBehaviour, ITrafficLights
     {
         public static MapDressing I;
 

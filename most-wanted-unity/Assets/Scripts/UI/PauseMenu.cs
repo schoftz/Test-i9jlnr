@@ -43,6 +43,17 @@ namespace MostWanted
         const float MenuX = 80, MenuY = 230, ItemH = 62, ItemGap = 10, MenuW = 440;
         const float PX = 600, PY = 200, PW = 1240, PH = 770;
 
+        int pendingPage = -1;     // OpenAt: bir sonraki açılışta doğrudan bu sayfa
+        bool closeOnBack;         // OpenAt: Esc alt sayfadan genel bakışa değil doğrudan kapatır (başlık ekranı)
+
+        /// <summary>Menüyü belirli bir sayfada açar (3 = Ayarlar, 4 = Emeği Geçenler). Başlık ekranı kullanır.</summary>
+        public void OpenAt(Game g, int pageIndex, bool backCloses)
+        {
+            pendingPage = Mathf.Clamp(pageIndex, 0, Items.Length - 1);
+            closeOnBack = backCloses;
+            g.OpenMenu(pageIndex == (int)Page.Credits ? Game.Menu.Credits : Game.Menu.Pause);
+        }
+
         static bool IsOpen(Game g) { return g != null && (g.menu == Game.Menu.Pause || g.menu == Game.Menu.Credits); }
 
         // ------------------------------------------------------------ yaşam döngüsü
@@ -105,6 +116,7 @@ namespace MostWanted
         {
             openT = 0f; closing = false; confirm = 0;
             cursor = g.menu == Game.Menu.Credits ? (int)Page.Credits : 0;
+            if (pendingPage >= 0) { cursor = pendingPage; pendingPage = -1; }
             page = cursor;
             creditScroll = 0f; creditStart = Time.unscaledTime;
             wantCapture = true;
@@ -113,7 +125,7 @@ namespace MostWanted
 
         void OnClosed(Game g)
         {
-            closing = false; confirm = 0; openT = 0f;
+            closing = false; confirm = 0; openT = 0f; closeOnBack = false;
             SetMapCam(g, false);
             ReleaseBlur();
         }
@@ -132,6 +144,7 @@ namespace MostWanted
             Snd(false, 0.2f);
             if (confirm != 0) { confirm = 0; return true; }
             if (closing) return true;
+            if (closeOnBack) { BeginClose(g); return true; }
             if (g.menu == Game.Menu.Credits) g.menu = Game.Menu.Pause;
             if (page != (int)Page.Overview) { SetPage(g, 0); cursor = 0; return true; }
             BeginClose(g);
