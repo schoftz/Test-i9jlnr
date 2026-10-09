@@ -503,7 +503,7 @@ namespace MostWanted
             if (Input.GetKeyDown(KeyCode.Escape))
             {
                 if (menu == Menu.None) OpenMenu(Menu.Pause);
-                else CloseMenu();
+                else if (!PauseMenu.HandleEscape(this)) CloseMenu();   // duraklatma menüsü alt sayfa/onay/animasyonu işler
             }
             bool drag = race.Active && race.IsDrag;
             if (Input.GetKeyDown(KeyCode.E) && !drag)

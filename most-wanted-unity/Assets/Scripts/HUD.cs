@@ -89,13 +89,14 @@ namespace MostWanted
             if (g.menu == Game.Menu.None || g.menu == Game.Menu.Pause) DrawHUD(g, W, H);
             switch (g.menu)
             {
-                case Game.Menu.Pause: DrawPause(g, W, H); break;
+                case Game.Menu.Pause: case Game.Menu.Credits: PauseMenu.Get().Draw(g); break;   // UI/PauseMenu.cs
                 case Game.Menu.Garage: break;   // GarageStage (Carbon tarzı) çizer
                 case Game.Menu.Jobs: DrawJobs(g, W, H); break;
                 case Game.Menu.Blacklist: DrawBlacklist(g, W, H); break;
                 case Game.Menu.Map: DrawMap(g, W, H); break;
-                case Game.Menu.Credits: DrawCredits(g, W, H); break;
             }
+            if (g.menu == Game.Menu.None || g.menu == Game.Menu.Pause || g.menu == Game.Menu.Credits) Toasts.Draw(g);   // UI/Toasts.cs
+            GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(scale, scale, 1f));
             if (g.showFps && g.opt != null)
             {
                 var o = g.opt;
@@ -208,15 +209,6 @@ namespace MostWanted
             else if (racing && r.raceTime < 1.2f) Shadow(new Rect(0, H / 2 - 160, W, 200), "BAŞLA!", center);
             if (racing && r.IsDrag) Shadow(new Rect(0, H - 330, W, 30), "E: vites ↑   Q: vites ↓   A/D: şerit", Align(small, TextAnchor.MiddleCenter));
 
-            for (int i = 0; i < g.toasts.Count; i++)
-            {
-                float a = Mathf.Clamp01(g.toastTimes[i]);
-                var tr = new Rect(W / 2 - 480, H * 0.24f + i * 42, 960, 40);
-                Rect(tr, new Color(0, 0, 0, 0.55f * a));
-                var old = GUI.color; GUI.color = new Color(1, 1, 1, a);
-                GUI.Label(tr, g.toasts[i], toastStyle);
-                GUI.color = old;
-            }
             if (g.menu == Game.Menu.None && Time.timeSinceLevelLoad < 40f)
                 GUI.Label(new Rect(0, H - 30, W, 28), "WASD sür  •  Space el freni  •  Shift nitro  •  Q speedbreaker  •  C kamera  •  H korna  •  E garaj  •  J işler  •  B kara liste  •  M harita  •  Esc menü", Align(tiny, TextAnchor.MiddleCenter));
         }
@@ -492,118 +484,6 @@ namespace MostWanted
             GUI.Box(r, GUIContent.none, box);
             GUI.Label(new Rect(r.x, r.y + 10, r.width, 50), head, title);
             return r;
-        }
-
-        void DrawPause(Game g, float W, float H)
-        {
-            if (Event.current.type == EventType.MouseUp) SaveSystem.Save();
-            var r = Panel(W, H, 780, 1060, "DURAKLATILDI");
-            GUILayout.BeginArea(new Rect(r.x + 40, r.y + 70, r.width - 80, r.height - 90));
-            var d = SaveSystem.Data;
-            GUILayout.Label("Para: " + U.Money(d.money) + "   Kazanılan yarış: " + d.racesWon + "   Kaçış: " + d.escapes + "   Yakalanma: " + d.busted, small);
-            if (GUILayout.Button("Devam Et", btn)) g.CloseMenu();
-            if (GUILayout.Button("Kaydet", btn)) { SaveSystem.Save(); g.Toast("Oyun kaydedildi."); }
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Grafik:", small, GUILayout.Width(90));
-            for (int i = 0; i < 4; i++)
-            {
-                var old = GUI.backgroundColor;
-                if (d.quality == i) GUI.backgroundColor = Orange;
-                if (GUILayout.Button(OptimizationManager.PresetNames[i], btn)) g.ApplyQuality(i);
-                GUI.backgroundColor = old;
-            }
-            GUILayout.EndHorizontal();
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("FPS hedefi:", small, GUILayout.Width(120));
-            for (int i = 0; i < OptimizationManager.FpsNames.Length; i++)
-            {
-                var old = GUI.backgroundColor;
-                if (d.fpsTarget == i) GUI.backgroundColor = Orange;
-                if (GUILayout.Button(OptimizationManager.FpsNames[i], btn)) g.SetFpsTarget(i);
-                GUI.backgroundColor = old;
-            }
-            GUILayout.EndHorizontal();
-            if (GUILayout.Button("Hep Gündüz: " + (d.alwaysDay ? "Açık" : "Kapalı (kısa geceler)"), btn)) { d.alwaysDay = !d.alwaysDay; SaveSystem.Save(); }
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Atmosfer:", small, GUILayout.Width(110));
-            for (int i = 0; i < Game.AtmosphereNames.Length; i++)
-            {
-                var old = GUI.backgroundColor;
-                if (d.atmosphere == i) GUI.backgroundColor = Orange;
-                if (GUILayout.Button(Game.AtmosphereNames[i], btn)) g.ApplyAtmosphere(i);
-                GUI.backgroundColor = old;
-            }
-            GUILayout.EndHorizontal();
-            GUI.enabled = g.dressing != null;
-            if (GUILayout.Button("Islak Zemin (yağmur sonrası): " + (d.wet ? "Açık" : "Kapalı"), btn)) g.SetWet(!d.wet);
-            GUI.enabled = g.usingImportedMap;
-            if (GUILayout.Button("Harita Süsleme: " + (d.dressing ? "Açık" : "Kapalı") + "  (haritayı yeniden yükler)", btn)) { d.dressing = !d.dressing; SaveSystem.Save(); g.SetMap(g.mapMode); }
-            GUI.enabled = true;
-            if (GUILayout.Button("GPU Resident Drawer (deneysel): " + (d.gpuResidentDrawer ? "Açık" : "Kapalı"), btn)) { d.gpuResidentDrawer = !d.gpuResidentDrawer; SaveSystem.Save(); g.ApplyQuality(d.quality); }
-            if (GUILayout.Button("FPS Göstergesi: " + (g.showFps ? "Açık" : "Kapalı") + " (F)", btn)) g.showFps = !g.showFps;
-            if (GUILayout.Button("Harita: " + Game.MapNames[g.mapMode] + "  (değiştir)", btn))
-            {
-                int nm = (g.mapMode + 1) % 3;
-                if (nm == 1 && !g.HasImportedMap) nm = 2;
-                g.SetMap(nm);
-            }
-            GUI.enabled = true;
-            if (GUILayout.Button("Garaja Işınlan", btn))
-            {
-                g.police.EndPursuit(false); g.race.Abort(); g.delivery.Cancel();
-                g.CloseMenu();
-                g.player.Teleport(g.world.garagePos + Vector3.up * 0.5f, g.world.garageRot);
-                g.rig.Snap();
-            }
-            { string[] ds = { "MW Sürüş", "Arcade", "Gerçekçi" }; if (GUILayout.Button("Sürüş stili: " + ds[Mathf.Clamp(d.driveStyle, 0, 2)], btn)) { d.driveStyle = (d.driveStyle + 1) % 3; SaveSystem.Save(); } }
-            { string[] pd = { "Kolay", "Normal", "Zor" }; if (GUILayout.Button("Polis zorluğu: " + pd[Mathf.Clamp(d.policeDiff, 0, 2)], btn)) { d.policeDiff = (d.policeDiff + 1) % 3; SaveSystem.Save(); } }
-            if (GUILayout.Button("Hız çizgileri: " + (d.speedLines ? "Açık" : "Kapalı"), btn)) { d.speedLines = !d.speedLines; SaveSystem.Save(); }
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Direksiyon hassasiyeti: " + d.steerSens.ToString("0.00"), small, GUILayout.Width(250));
-            float ns = GUILayout.HorizontalSlider(d.steerSens, 0.6f, 2.0f, GUILayout.Width(320));
-            if (Mathf.Abs(ns - d.steerSens) > 0.001f) d.steerSens = Mathf.Round(ns * 20f) / 20f;
-            GUILayout.EndHorizontal();
-            for (int i = 0; i < 4; i++)
-            {
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Ses — " + AudioBus.Names[i] + ": %" + Mathf.RoundToInt(AudioBus.Volumes[i] * 100f), small, GUILayout.Width(250));
-                float v = GUILayout.HorizontalSlider(AudioBus.Volumes[i], 0f, 1f, GUILayout.Width(320));
-                if (Mathf.Abs(v - AudioBus.Volumes[i]) > 0.001f) { AudioBus.Volumes[i] = v; AudioBus.Store(d); }
-                GUILayout.EndHorizontal();
-            }
-            if (GUILayout.Button("Emeği Geçenler", btn)) g.OpenMenu(Game.Menu.Credits);
-            if (GUILayout.Button("Kaydı Sıfırla (Yeni Oyun)", btn))
-            {
-                int q = d.quality;
-                SaveSystem.Reset();
-                SaveSystem.Data.quality = q;
-                g.race.Abort(); g.police.EndPursuit(false);
-                g.CloseMenu();
-                g.SpawnPlayer(g.world.garagePos + Vector3.up * 0.5f, g.world.garageRot);
-                g.Toast("Yeni oyun başladı.");
-            }
-            if (GUILayout.Button("Çıkış", btn))
-            {
-                SaveSystem.Save();
-                Application.Quit();
-#if UNITY_EDITOR
-                UnityEditor.EditorApplication.isPlaying = false;
-#endif
-            }
-            GUILayout.Space(8);
-            GUILayout.Label("Kontroller: W/S gaz-fren, A/D direksiyon, Space el freni, Shift nitro, Q / sağ tık Speedbreaker, C kamera, R düzelt, E garaj, J işler, B kara liste, M/Tab harita, F FPS.  Drag: E/Q vites, A/D şerit.  Hileler: F9 para, F10 5 yıldız.", small);
-            GUILayout.EndArea();
-        }
-
-        void DrawCredits(Game g, float W, float H)
-        {
-            var r = Panel(W, H, 1000, 640, "EMEĞİ GEÇENLER");
-            GUILayout.BeginArea(new Rect(r.x + 40, r.y + 80, r.width - 80, r.height - 100));
-            scroll2 = GUILayout.BeginScrollView(scroll2);
-            foreach (var l in g.Credits()) GUILayout.Label("• " + l, small);
-            GUILayout.EndScrollView();
-            if (GUILayout.Button("Geri", btn)) g.OpenMenu(Game.Menu.Pause);
-            GUILayout.EndArea();
         }
 
         void DrawJobs(Game g, float W, float H)
