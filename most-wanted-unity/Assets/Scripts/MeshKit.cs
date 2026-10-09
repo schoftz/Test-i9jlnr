@@ -50,6 +50,46 @@ namespace MostWanted
             if (bottom) Quad(topSub, b0 + c[3], b0 + c[2], b0 + c[1], b0 + c[0], Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero);
         }
 
+        /// <summary>Dışa bakan dörtgen: sarım yönü dış normale göre otomatik düzeltilir.</summary>
+        public void QuadOut(int s, Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 outward)
+        {
+            if (Vector3.Dot(Vector3.Cross(b - a, d - a), outward) < 0f) { var t = b; b = d; d = t; }
+            Quad(s, a, b, c, d, new Vector2(0, 0), new Vector2(0, 1), new Vector2(1, 1), new Vector2(1, 0));
+        }
+
+        /// <summary>Herhangi bir yönelimde kutu (merkez, dönüş, boyut).</summary>
+        public void OBox(int s, Vector3 c, Quaternion q, Vector3 size)
+        {
+            Vector3 x = q * Vector3.right * (size.x * 0.5f), y = q * Vector3.up * (size.y * 0.5f), z = q * Vector3.forward * (size.z * 0.5f);
+            QuadOut(s, c - x - y + z, c - x + y + z, c + x + y + z, c + x - y + z, z);
+            QuadOut(s, c - x - y - z, c - x + y - z, c + x + y - z, c + x - y - z, -z);
+            QuadOut(s, c + x - y - z, c + x + y - z, c + x + y + z, c + x - y + z, x);
+            QuadOut(s, c - x - y - z, c - x + y - z, c - x + y + z, c - x - y + z, -x);
+            QuadOut(s, c - x + y - z, c - x + y + z, c + x + y + z, c + x + y - z, y);
+            QuadOut(s, c - x - y - z, c - x - y + z, c + x - y + z, c + x - y - z, -y);
+        }
+
+        /// <summary>Silindir: merkez, eksen yönü, yarıçap, uzunluk.</summary>
+        public void Cyl(int s, Vector3 c, Vector3 axis, float r, float len, int seg = 14, bool caps = true)
+        {
+            axis.Normalize();
+            Vector3 u = Vector3.Cross(axis, Mathf.Abs(axis.y) < 0.9f ? Vector3.up : Vector3.right).normalized, w = Vector3.Cross(axis, u);
+            Vector3 h = axis * (len * 0.5f);
+            for (int i = 0; i < seg; i++)
+            {
+                float a0 = i * Mathf.PI * 2f / seg, a1 = (i + 1) * Mathf.PI * 2f / seg;
+                Vector3 p0 = (u * Mathf.Cos(a0) + w * Mathf.Sin(a0)) * r, p1 = (u * Mathf.Cos(a1) + w * Mathf.Sin(a1)) * r;
+                QuadOut(s, c - h + p0, c + h + p0, c + h + p1, c - h + p1, p0 + p1);
+                if (caps)
+                {
+                    int a = Vert(c + h, Vector2.zero, axis), b = Vert(c + h + p0, Vector2.zero, axis), d = Vert(c + h + p1, Vector2.zero, axis);
+                    if (Vector3.Dot(Vector3.Cross(p0, p1 - p0), axis) > 0f) Tri(s, a, b, d); else Tri(s, a, d, b);
+                    int e = Vert(c - h, Vector2.zero, -axis), f = Vert(c - h + p0, Vector2.zero, -axis), gg = Vert(c - h + p1, Vector2.zero, -axis);
+                    if (Vector3.Dot(Vector3.Cross(p0, p1 - p0), -axis) > 0f) Tri(s, e, f, gg); else Tri(s, e, gg, f);
+                }
+            }
+        }
+
         public Mesh Build(string name)
         {
             var m = new Mesh { name = name };

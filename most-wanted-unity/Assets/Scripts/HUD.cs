@@ -115,7 +115,6 @@ namespace MostWanted
         // ---- yeni sürüş HUD'ı (referans düzen: 1920x1080) ----
         GUIStyle numBig, numMid, numSmall, lblBold, lblSmall, rowName, rowGap, boxNum;
         Texture2D arcTex; int arcKey = -1;
-        Material roundMask; bool roundMaskTried;
         const float ArcStart = 200f, ArcSweep = 260f;   // saat yönü derece (0 = yukarı)
 
         void InitHud()
@@ -295,7 +294,14 @@ namespace MostWanted
                         float k = rel / ArcSweep * maxK;
                         float aRing = Mathf.Clamp01(Mathf.Min(rr - rIn + 1f, rOut - rr + 1f));
                         if (aRing > 0f) c = new Color(1f, 1f, 1f, aRing * 0.95f);
-                        if (k >= redK)
+                        // çentikler dokuya gömülü (döndürülmüş GUI çizimi yok)
+                        float frac = k * 2f - Mathf.Round(k * 2f);
+                        bool major = Mathf.Abs(Mathf.Round(k * 2f)) % 2 == 0;
+                        float tickW = (major ? 1.6f : 1.0f) / (rr * Mathf.Deg2Rad * ArcSweep / maxK / 2f + 0.001f);
+                        float tickLen = major ? 0.06f * S : 0.035f * S;
+                        if (Mathf.Abs(frac) < tickW && rr > rOut - tickLen && rr <= rOut)
+                            c = k >= redK ? new Color(1f, 0.25f, 0.18f, 1f) : new Color(1f, 1f, 1f, 1f);
+                        if (k >= redK && c.a < 0.99f)
                         {
                             float aRed = Mathf.Clamp01(Mathf.Min(rr - rRedIn + 1f, rOut - rr + 1f));
                             if (aRed > c.a) c = new Color(0.95f, 0.12f, 0.1f, aRed * 0.9f);
@@ -318,37 +324,32 @@ namespace MostWanted
             var tex = ArcTexture(maxK, redK);
             GUI.DrawTexture(new Rect(c.x - R, c.y - R, 2 * R, 2 * R), tex);
 
-            var oldM = GUI.matrix;
-            // çentikler ve sayılar
-            for (int i = 0; i <= maxK * 2; i++)
+            // sayılar (çentikler ArcTexture içinde)
+            for (int i = 0; i <= maxK; i++)
             {
-                float k = i * 0.5f;
-                float ang = ArcStart + k / maxK * ArcSweep;
-                bool major = i % 2 == 0;
-                Color col = k >= redK ? new Color(1f, 0.2f, 0.15f) : Color.white;
-                Rot(ang, c, oldM);
-                Rect(new Rect(c.x - (major ? 1.5f : 1f), c.y - R + 2f, major ? 3f : 2f, major ? 16f : 9f), col);
-                GUI.matrix = oldM;
-                if (major)
-                {
-                    float rad = ang * Mathf.Deg2Rad;
-                    Vector2 np = c + new Vector2(Mathf.Sin(rad), -Mathf.Cos(rad)) * (R - 34f);
-                    var ns = lblSmall; var o = ns.normal.textColor; ns.normal.textColor = col;
-                    GUI.Label(new Rect(np.x - 15, np.y - 12, 30, 24), ((int)k).ToString(), ns);
-                    ns.normal.textColor = o;
-                }
+                float ang = ArcStart + (float)i / maxK * ArcSweep;
+                Color col = i >= redK ? new Color(1f, 0.2f, 0.15f) : Color.white;
+                float rad = ang * Mathf.Deg2Rad;
+                Vector2 np = c + new Vector2(Mathf.Sin(rad), -Mathf.Cos(rad)) * (R - 34f);
+                var ns = lblSmall; var o = ns.normal.textColor; ns.normal.textColor = col;
+                GUI.Label(new Rect(np.x - 15, np.y - 12, 30, 24), i.ToString(), ns);
+                ns.normal.textColor = o;
             }
-            // nitro (iç yay) ve speedbreaker (daha iç yay) — ince kavisli çubuklar
-            ArcBar(c, R - 58f, p.nitro, p.nitroActive ? Color.white : Blue, oldM);
-            if (pd != null) ArcBar(c, R - 68f, pd.speedbreaker, pd.speedbreakerOn ? Color.white : Orange, oldM);
+            // nitro (iç yay) ve speedbreaker (daha iç yay)
+            ArcBar(c, R - 58f, p.nitro, p.nitroActive ? Color.white : Blue);
+            if (pd != null) ArcBar(c, R - 68f, pd.speedbreaker, pd.speedbreakerOn ? Color.white : Orange);
             Shadow(new Rect(c.x - R + 4, c.y + R - 36, 120, 18), "NİTRO / SB", Align(tiny, TextAnchor.MiddleLeft));
-            // ibre
+            // ibre: döndürülmüş dikdörtgen yerine merkezden dışa küçük karelerden çizgi (Metal'de güvenli, kadran içinde kırpılı)
             float rpmK = Mathf.Clamp(p.rpm / 1000f, 0f, maxK);
-            float na = ArcStart + rpmK / maxK * ArcSweep;
-            Rot(na, c, oldM);
-            Rect(new Rect(c.x - 2f, c.y - (R - 18f), 4f, R - 18f), p.revLimiter ? new Color(1f, 0.15f, 0.1f) : new Color(1f, 0.25f, 0.15f));
-            GUI.matrix = oldM;
-            Rect(new Rect(c.x - 7, c.y - 7, 14, 14), new Color(0.12f, 0.12f, 0.14f, 1f));
+            float na = (ArcStart + rpmK / maxK * ArcSweep) * Mathf.Deg2Rad;
+            Vector2 nd = new Vector2(Mathf.Sin(na), -Mathf.Cos(na));
+            Color ncol = p.revLimiter ? new Color(1f, 0.15f, 0.1f) : new Color(1f, 0.25f, 0.15f);
+            for (float t = 14f; t < R - 20f; t += 2.5f)
+            {
+                Vector2 q = c + nd * t;
+                float w = t < R * 0.6f ? 4f : 3f;
+                Rect(new Rect(q.x - w * 0.5f, q.y - w * 0.5f, w, w), ncol);
+            }
 
             // vites (üstte) + hız (büyük italik) + KM/S
             string gear = p.gear == 0 ? "R" : p.gear.ToString();
@@ -359,25 +360,17 @@ namespace MostWanted
             Shadow(new Rect(c.x - 40, c.y + 100, 100, 26), "KM/S", lblSmall);
         }
 
-        /// <summary>Dönmüş çizim: matris her seferinde temel matristen (ölçek) AÇIKÇA kurulur — RotateAroundPivot ölçekli matriste pivotu kaydırıp birikerek çapraz iz bırakıyordu.</summary>
-        static void Rot(float ang, Vector2 c, Matrix4x4 baseM)
+        /// <summary>İnce kavisli çubuk: yay boyunca küçük kareler (döndürme yok).</summary>
+        void ArcBar(Vector2 c, float radius, float v, Color col)
         {
-            GUI.matrix = baseM * Matrix4x4.TRS(new Vector3(c.x, c.y, 0f), Quaternion.Euler(0f, 0f, ang), Vector3.one) * Matrix4x4.TRS(new Vector3(-c.x, -c.y, 0f), Quaternion.identity, Vector3.one);
-        }
-
-        /// <summary>Kesintisiz ince kavisli çubuk (sık, üst üste binen dilimler — kesikli görünmez).</summary>
-        void ArcBar(Vector2 c, float radius, float v, Color col, Matrix4x4 oldM)
-        {
-            const int seg = 120;
             float sweep = ArcSweep * 0.62f;   // yayın sol-alt kısmı (sayılarla çakışmaz)
-            float segLen = 2f * Mathf.PI * radius * (sweep / 360f) / seg + 1.2f;
+            int seg = Mathf.Max(24, Mathf.RoundToInt(2f * Mathf.PI * radius * (sweep / 360f) / 2.2f));
             int lit = Mathf.RoundToInt(Mathf.Clamp01(v) * seg);
             for (int i = 0; i < seg; i++)
             {
-                float ang = ArcStart + (i + 0.5f) / seg * sweep;
-                Rot(ang + 90f, c, oldM);
-                Rect(new Rect(c.x - segLen * 0.5f, c.y - radius, segLen, 4f), i < lit ? col : new Color(1f, 1f, 1f, 0.1f));
-                GUI.matrix = oldM;
+                float ang = (ArcStart + (i + 0.5f) / seg * sweep) * Mathf.Deg2Rad;
+                Vector2 q = c + new Vector2(Mathf.Sin(ang), -Mathf.Cos(ang)) * radius;
+                Rect(new Rect(q.x - 2f, q.y - 2f, 4f, 4f), i < lit ? col : new Color(1f, 1f, 1f, 0.1f));
             }
         }
 
@@ -389,15 +382,14 @@ namespace MostWanted
             if (speedLineAlpha <= 0.01f) return;
             var rnd = new System.Random(Mathf.FloorToInt(Time.unscaledTime * 24f));
             Vector2 c = new Vector2(W / 2, H * 0.48f);
-            var oldM = GUI.matrix;
             for (int i = 0; i < 26; i++)
             {
-                float ang = (float)rnd.NextDouble() * 360f;
+                float ang = (float)rnd.NextDouble() * Mathf.PI * 2f;
                 float dist = 520f + (float)rnd.NextDouble() * 420f;   // sadece ekran kenarlarına yakın
                 float len = 120f + (float)rnd.NextDouble() * 260f;
-                Rot(ang, c, oldM);
-                Rect(new Rect(c.x + dist, c.y - 0.75f, len, 1.5f), new Color(1f, 1f, 1f, 0.10f * speedLineAlpha));
-                GUI.matrix = oldM;
+                Vector2 dir = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang));
+                Color lc = new Color(1f, 1f, 1f, 0.10f * speedLineAlpha);
+                for (float t = 0; t < len; t += 6f) { Vector2 q = c + dir * (dist + t); Rect(new Rect(q.x - 1.2f, q.y - 1.2f, 2.4f, 2.4f), lc); }
             }
         }
 
@@ -406,28 +398,21 @@ namespace MostWanted
             float ms = 270f;
             Rect mr = new Rect(30, H - ms - 40, ms, ms);
             var p = g.player;
-            if (!roundMaskTried)
+            if (g.mapRT != null && g.mapRT.IsCreated())
             {
-                roundMaskTried = true;
-                var m = Resources.Load<Material>("MW_RoundMaskMat");
-                if (m != null && m.shader != null && m.shader.isSupported) roundMask = new Material(m);
-            }
-            if (g.mapRT != null)
-            {
-                if (roundMask != null)
+                // Yuvarlak maske: özel shader yerine yatay şeritler (DrawTextureWithTexCoords) — Metal/tüm platformlarda güvenli
+                const int strips = 90;
+                float h = ms / strips;
+                for (int i = 0; i < strips; i++)
                 {
-                    if (Event.current.type == EventType.Repaint)
-                    {
-                        // Graphics.DrawTexture ekran pikseliyle çizer: GUI ölçeğini elle uygula
-                        var m = GUI.matrix;
-                        float sc = m.m00;
-                        Rect(new Rect(mr.x - 5, mr.y - 5, ms + 10, ms + 10), new Color(0, 0, 0, 0f));
-                        GUI.matrix = Matrix4x4.identity;
-                        Graphics.DrawTexture(new Rect(mr.x * sc, mr.y * sc, mr.width * sc, mr.height * sc), g.mapRT, roundMask);
-                        GUI.matrix = m;
-                    }
+                    float yc = (i + 0.5f) / strips * 2f - 1f;           // -1..1 (üst→alt)
+                    float half = Mathf.Sqrt(Mathf.Max(0f, 1f - yc * yc)); // kiriş yarı genişliği (0..1)
+                    if (half <= 0.001f) continue;
+                    float x0 = 0.5f - half * 0.5f;
+                    Rect dst = new Rect(mr.x + x0 * ms, mr.y + i * h, half * ms, h + 0.6f);
+                    Rect uv = new Rect(x0, 1f - (i + 1f) / strips, half, 1f / strips);
+                    GUI.DrawTextureWithTexCoords(dst, g.mapRT, uv, false);
                 }
-                else GUI.DrawTexture(mr, g.mapRT);
             }
             // çerçeve halkası (yuvarlak)
             DrawRing(mr.center, ms / 2f, new Color(1f, 1f, 1f, 0.85f));
@@ -559,6 +544,7 @@ namespace MostWanted
                 g.player.Teleport(g.world.garagePos + Vector3.up * 0.5f, g.world.garageRot);
                 g.rig.Snap();
             }
+            if (GUILayout.Button("Sürüş stili: " + (d.driveStyle == 0 ? "Arcade" : "Gerçekçi"), btn)) { d.driveStyle = d.driveStyle == 0 ? 1 : 0; SaveSystem.Save(); }
             { string[] pd = { "Kolay", "Normal", "Zor" }; if (GUILayout.Button("Polis zorluğu: " + pd[Mathf.Clamp(d.policeDiff, 0, 2)], btn)) { d.policeDiff = (d.policeDiff + 1) % 3; SaveSystem.Save(); } }
             if (GUILayout.Button("Hız çizgileri: " + (d.speedLines ? "Açık" : "Kapalı"), btn)) { d.speedLines = !d.speedLines; SaveSystem.Save(); }
             GUILayout.BeginHorizontal();

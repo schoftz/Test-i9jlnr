@@ -16,9 +16,11 @@ class RvpSim {
   static void Step(St s, float steerIn, float thr, bool hb, float assist) {
     float kmh = (float)Math.Sqrt(s.u * s.u + s.w * s.w) * 3.6f;
     // RVP SteeringControl
-    float limit = 40f * RvpTire.SteerCurve(s.u); if (hb) limit = Math.Max(limit, 24f);
+    float limit = Math.Min(44f, 40f * (arcade ? RvpTire.SteerCurveArcade(s.u) : RvpTire.SteerCurve(s.u)) * sens); float muS = mu * (arcade ? RvpTire.ArcadeGrip(kmh) * 1.4f : 1.4f);
+    limit = Math.Min(limit, RvpTire.SteerOptimal(s.u, L, muS) * (0.95f + 0.25f * sens));
+    if (hb) limit = Math.Max(limit, 24f);
     float tgt = steerIn * limit; bool ret = Math.Abs(tgt) < Math.Abs(s.steer);
-    float stp = RvpTire.SteerRateDeg(40f, ret, 1f) * dt; s.steer += Math.Max(-stp, Math.Min(stp, tgt - s.steer));
+    float stp = RvpTire.SteerRateDeg(40f, ret, sens) * dt; s.steer += Math.Max(-stp, Math.Min(stp, tgt - s.steer));
     // şanzıman (basit otomatik)
     float rpm = CarMath.EngineRpm(s.u, s.gear, fd, rW, ratios);
     if (rpm > redline * 0.96f && s.gear < ratios.Length) s.gear++;
@@ -49,8 +51,8 @@ class RvpSim {
       float spin = (!front && hb) ? 1f : -1f;
       float fwdSlip = spin >= 0 ? spin : ratio <= 1 ? ratio * 0.2013f : 0.2013f + (ratio - 1) * 0.8f;
       float Fx = Math.Sign(req) * Math.Min(Math.Abs(req), RvpTire.FwdCurve(fwdSlip) * peak);
-      if (spin >= 0) Fx = -Math.Sign(vx) * Math.Min(Math.Abs(vx) / dt, RvpTire.FwdCurve(fwdSlip) * peak);
-      float gF, gR; RvpTire.SideGrip(kmh, out gF, out gR); float sideMul = front ? gF * (1f + 0.05f * lift) : gR * (1f - 0.04f * lift);   // arka 1.15: kararlılık (oyundaki RvpStep ile aynı)
+      if (spin >= 0) Fx = -Math.Sign(vx) * Math.Min(Math.Abs(vx) / dt, RvpTire.FwdCurve(fwdSlip) * peak * 0.35f);
+      float gF, gR; RvpTire.SideGrip(kmh, out gF, out gR); if (arcade) { float ag = RvpTire.ArcadeGrip(kmh); gF *= hb ? 1f : ag; gR *= ag; } float sideMul = front ? gF * (1f + 0.05f * lift) : gR * (1f - 0.04f * lift);   // arka 1.15: kararlılık (oyundaki RvpStep ile aynı)
       if (!front && hb) sideMul *= 0.75f;
       float dep = RvpTire.Dependence(1.6f, Math.Max(0f, Math.Min(1f, fwdSlip / 0.2013f - 1f)));
       float Fz = -Math.Sign(vz) * RvpTire.SideCurve(RvpTire.SideSlip(vz)) * peak * sideMul * dep;
@@ -62,7 +64,9 @@ class RvpSim {
     float v2 = s.u * s.u;
     fx -= (dragK * v2 + (s.u > 0.5f ? m * CarMath.RollingDecel : 0f)) / m;
     float lv = s.w;
-    float yawAcc = mz / Iz + RvpTire.SpinAssist(steerIn, s.u, lv, s.r, 2.2f, 1.6f * assist, s.steer, L, mu);
+    float muEff = arcade ? mu * RvpTire.ArcadeGrip(kmh) * 1.3f : mu;
+    float yawAcc = mz / Iz + RvpTire.SpinAssist(steerIn, s.u, lv, s.r, 2.2f, 1.6f * assist, s.steer, L, muEff);
+    if (arcade && !hb) yawAcc += RvpTire.ArcadeTurnIn(steerIn, s.u, s.r, s.steer, L, muEff);
     lastAx = fx; lastAy = fy;
     s.u += (fx + s.r * s.w) * dt;
     s.w += (fy - s.r * s.u) * dt;
@@ -71,7 +75,7 @@ class RvpSim {
     s.x += (s.u * (float)Math.Cos(s.psi) - s.w * (float)Math.Sin(s.psi)) * dt;
     s.y += (s.u * (float)Math.Sin(s.psi) + s.w * (float)Math.Cos(s.psi)) * dt;
   }
-  static float lastAx, lastAy, lift;
+  static float lastAx, lastAy, lift; static bool arcade; static float sens = 1f;
 
   static St Start(float kmh) {
     Array.Clear(F, 0, 4); Array.Clear(S, 0, 4); lastAx = lastAy = 0; lift = 0;
@@ -84,9 +88,32 @@ class RvpSim {
     fd = CarMath.FinalDrive(top, redline, rW, ratios);
     dragK = CarMath.DragCoef(peakT, top, redline, rW, ratios);
     Iz = m * (1.9f * 1.9f + 4.4f * 4.4f) / 12f;
+    foreach (var mode in new[] { false, true }) {
+      arcade = mode;
+      Console.WriteLine("\n===== " + (arcade ? "ARCADE (oyuncu varsayılanı)" : "GERÇEKÇİ (RVP)") + " =====");
+      foreach (float sv in new[] { 0.6f, 1.2f, 2.0f }) {
+        sens = sv;
+        Console.Write("hassasiyet {0:0.0}: sabit hız R =", sv);
+        foreach (float kmh in new[] { 30f, 60f, 100f, 120f }) Console.Write("  {0:0}→{1:0.0} m", kmh, ConstR(kmh));
+        Console.WriteLine();
+      }
+      sens = 1.2f;
+      Run();
+    }
+  }
+  static float ConstR(float kmh) {
+    var s = Start(kmh); float rs = 0, n = 0;
+    for (float t = 0; t < 2.5f; t += dt) {
+      float thr = Math.Max(0f, Math.Min(1f, (kmh / 3.6f - s.u) * 0.8f + 0.2f));
+      Step(s, 1f, thr, false, 1f);
+      if (t > 2f) { rs += (float)Math.Sqrt(s.u * s.u + s.w * s.w) / Math.Max(1e-3f, s.r); n++; }
+    }
+    return rs / n;
+  }
+  static void Run() {
     Console.WriteLine("RVP normal mod — RWD 1500 kg, 550 Nm, μ=1.05; tam sağ direksiyon 2.0 sn (yarıçap = v/r, 1.5–2.0 sn ortalaması)");
     Console.WriteLine("hız   gaz | R (m)   v_son (km/s)  yanal (g)  kayma (°)  direksiyon (°)");
-    foreach (float kmh in new[] { 30f, 60f, 100f }) {
+    foreach (float kmh in new[] { 30f, 60f, 100f, 120f }) {
       foreach (float thr in new[] { 0f, 1f }) {
         var s = Start(kmh); float rs = 0, vs = 0, ays = 0, n = 0;
         for (float t = 0; t < 2.0f; t += dt) {
@@ -100,7 +127,7 @@ class RvpSim {
     }
     // aynı hızda karşılaştırma: gaz 0 vs 1, hız sabit tutulan (gaz ayarlı) dönüş — saf direksiyon etkisi
     Console.WriteLine("\nSabit hız (gaz otomatik ayarlı) — tam direksiyon 2 sn:");
-    foreach (float kmh in new[] { 30f, 60f, 100f }) {
+    foreach (float kmh in new[] { 30f, 60f, 100f, 120f }) {
       var s = Start(kmh); float rs = 0, n = 0, thrSum = 0;
       for (float t = 0; t < 2.0f; t += dt) {
         float thr = Math.Max(0f, Math.Min(1f, (kmh / 3.6f - s.u) * 0.8f + 0.2f));
@@ -110,8 +137,8 @@ class RvpSim {
       Console.WriteLine("{0,4:0} km/s: R={1:0.0} m, ort. gaz={2:0.00}", kmh, rs / n, thrSum / n);
     }
     // el freni: 60 km/s, tam direksiyon + el freni 1 sn
-    { var s = Start(60); float maxSlip = 0; for (float t = 0; t < 1.2f; t += dt) { Step(s, 1f, 0.3f, t < 1f, 1f); maxSlip = Math.Max(maxSlip, (float)Math.Abs(Math.Atan2(s.w, s.u) * 180 / Math.PI)); }
-      Console.WriteLine("\nEl freni 60 km/s: maks. kayma açısı {0:0.0}° (drift), son hız {1:0} km/s", maxSlip, Math.Sqrt(s.u * s.u + s.w * s.w) * 3.6); }
+    { var s = Start(60); float maxSlip = 0; for (float t = 0; t < 1.2f; t += dt) { Step(s, 0.7f, 0.3f, t < 1f, 1f); maxSlip = Math.Max(maxSlip, (float)Math.Abs(Math.Atan2(s.w, s.u) * 180 / Math.PI)); }
+      Console.WriteLine("\nEl freni 60 km/s (%70 direksiyon, 1 sn): maks. kayma açısı {0:0.0}° (drift), son hız {1:0} km/s", maxSlip, Math.Sqrt(s.u * s.u + s.w * s.w) * 3.6); }
     // lift-off: 100 km/s yarım direksiyonla gazda 2 sn, sonra gaz bırak 1 sn → savrulma hızı değişimi
     { var s = Start(100); float r0 = 0;
       for (float t = 0; t < 3f; t += dt) { bool off = t > 2f; lift = off ? Math.Min(1f, (t - 2f) * 3f) : 0f; Step(s, 0.5f, off ? 0f : 0.5f, false, 1f); if (Math.Abs(t - 2f) < dt / 2) r0 = s.r; }

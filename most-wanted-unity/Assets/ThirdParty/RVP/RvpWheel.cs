@@ -24,6 +24,7 @@ namespace RVP
         public float sidewaysSlipDependence = 1.6f;  // RVP range 0–2: lateral grip is only reduced by real wheelspin/lock (→ 0.6 when fully spinning)
         public bool steered;
         public float extendSpeed = 20f;
+        public float camber;              // görsel kamber (°), MostWanted stance
 
         // ---- state ----
         public bool grounded;
@@ -115,7 +116,7 @@ namespace RVP
             float ratio = Mathf.Abs(req) / peak;           // 1 = at the peak of the forward curve
             fwdSlip = spinOverride >= 0f ? spinOverride : ratio <= 1f ? ratio * 0.2013f : 0.2013f + (ratio - 1f) * 0.8f;
             float fx = Mathf.Sign(req) * Mathf.Min(Mathf.Abs(req), RvpTire.FwdCurve(fwdSlip) * peak);
-            if (spinOverride >= 0f) fx = -Mathf.Sign(vx) * Mathf.Min(Mathf.Abs(vx) / Mathf.Max(dt, 1e-4f), RvpTire.FwdCurve(fwdSlip) * peak);
+            if (spinOverride >= 0f) fx = -Mathf.Sign(vx) * Mathf.Min(Mathf.Abs(vx) / Mathf.Max(dt, 1e-4f), RvpTire.FwdCurve(fwdSlip) * peak * 0.35f);   // el freni: kayan (tam kilitli değil) arka — drift hızını korur
             // ---- lateral (RVP sidewaysSlip + slip dependence) ----
             sideSlip = RvpTire.SideSlip(vz);
             float fwdSlipForDep = fwdSlip / 0.2013f - 1f;  // 0 at the forward peak, 1 when fully spinning/locked
@@ -141,7 +142,7 @@ namespace RVP
             if (!visInit) { visBase = Quaternion.Inverse(car.rotation) * vis.rotation; visInit = true; }
             Vector3 p = anchor.position - anchor.up * (suspensionDistance * travelDist);
             spinAngle = Mathf.Repeat(spinAngle + spinRpm * 6f * dt, 360f);
-            Quaternion q = car.rotation * Quaternion.AngleAxis(steerDeg, Vector3.up) * Quaternion.AngleAxis(spinAngle, Vector3.right) * visBase;
+            Quaternion q = car.rotation * Quaternion.AngleAxis(steerDeg, Vector3.up) * Quaternion.AngleAxis(camber, Vector3.forward) * Quaternion.AngleAxis(spinAngle, Vector3.right) * visBase;
             vis.SetPositionAndRotation(p, q);
         }
     }

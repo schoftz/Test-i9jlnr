@@ -104,7 +104,8 @@ namespace MostWanted
         public bool owned;
         public int color = -1;
         public int[] tune = new int[Catalog.TuneCount];
-        public string engineSound = "";   // garajdan seçilen motor sesi (boş = aracın kendi sesi)
+        public string engineSound = "";
+        public CustomSave custom = new CustomSave();   // F&F özelleştirme (sadece drift araçları)   // garajdan seçilen motor sesi (boş = aracın kendi sesi)
     }
 
     [Serializable]
@@ -129,7 +130,8 @@ namespace MostWanted
         public bool dressing = true;
         public bool gpuResidentDrawer = false;
         public float steerSens = 1.2f;
-        public int policeDiff = 0;                // 0 Kolay, 1 Normal, 2 Zor
+        public int policeDiff = 0;
+        public int driveStyle = 0;                // 0 Arcade (varsayılan), 1 Gerçekçi (RVP)                // 0 Kolay, 1 Normal, 2 Zor
         public bool speedLines = true;           // direksiyon hassasiyeti 0.6–1.6  // Unity 6 GPU Resident Drawer (Keep All ayarı gerekir)
         public float[] volumes = { 1f, 1f, 0.6f, 0.8f }; // Motor, Efekt, Müzik, Siren
     }

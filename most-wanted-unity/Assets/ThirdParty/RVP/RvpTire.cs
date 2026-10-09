@@ -57,6 +57,48 @@ namespace RVP
             return SteerV[SteerV.Length - 1];
         }
 
+        /// <summary>Arcade sürüş stili (oyuncu): daha az hızla azalan direksiyon — 0 %100, 50 %85, 100 %70, 150 %60, 200+ %50.</summary>
+        static readonly float[] SteerVA = { 1f, 0.85f, 0.70f, 0.60f, 0.50f };
+        public static float SteerCurveArcade(float speedMs)
+        {
+            float k = Math.Abs(speedMs) * 3.6f;
+            for (int i = 1; i < SteerK.Length; i++)
+                if (k <= SteerK[i]) return SteerVA[i - 1] + (SteerVA[i] - SteerVA[i - 1]) * (k - SteerK[i - 1]) / (SteerK[i] - SteerK[i - 1]);
+            return SteerVA[SteerVA.Length - 1];
+        }
+
+        /// <summary>Aşırı kilit sınırlayıcı (°): tutuşun izin verdiği viraj için gereken açı (L·μg/v²) + ön lastiğin tepe kayma açısı.
+        /// Bundan fazla direksiyon ön lastiği tepe noktasının ötesine iter (daha az dönüş) — hassasiyet ters çalışıyormuş gibi hissettiriyordu.</summary>
+        public static float SteerOptimal(float speedMs, float wheelBase, float mu)
+        {
+            float v = Math.Max(3f, Math.Abs(speedMs));
+            float kin = (float)Math.Atan(wheelBase * mu * 9.81f / (v * v));
+            float slip = (float)Math.Atan(1.93f / v);   // SideCurve tepe: yanal kayma 0.193 → 1.93 m/s
+            return (kin + slip * 1.2f) * 57.29578f;
+        }
+
+        /// <summary>Arcade "downforce" tutuşu: 0 km/s ×1.0 → 120 ×1.6 → 200 ×1.9 (tüm lastikler).</summary>
+        public static float ArcadeGrip(float kmh)
+        {
+            kmh = Math.Abs(kmh);
+            if (kmh <= 120f) return 1f + 0.6f * (float)Math.Sqrt(kmh / 120f);   // hızlı yükselir (60 km/s ×1.42)
+            return Math.Min(1.9f, 1.6f + 0.3f * (kmh - 120f) / 80f);
+        }
+
+        /// <summary>Arcade dönüş yardımı: direksiyonun istediği savrulma hızına (v·tanδ/L, tutuşla sınırlı) doğru yaw ivmesi (rad/s²).
+        /// Yalnızca girdi yönünde ve hedefin altındayken ekler.</summary>
+        public static float ArcadeTurnIn(float steerInput, float fwdVel, float yawRate, float steerDeg, float wheelBase, float mu, float gain = 5f)
+        {
+            float v = Math.Abs(fwdVel);
+            if (v < 2f || Math.Abs(steerInput) < 0.05f) return 0f;
+            float target = fwdVel * (float)Math.Tan(steerDeg * Math.PI / 180.0) / Math.Max(1.5f, wheelBase);
+            float cap = mu * 9.81f / Math.Max(v, 3f);
+            if (target > cap) target = cap; if (target < -cap) target = -cap;
+            float s = Math.Sign(target);
+            if (s == 0f || yawRate * s >= target * s) return 0f;
+            return (target - yawRate) * gain * Math.Min(1f, v / 8f);
+        }
+
         /// <summary>Steering rate (deg/s) replacing RVP's lerp: full lock in 0.12 s, back to centre in 0.08 s (× sensitivity).</summary>
         public static float SteerRateDeg(float maxLock, bool returning, float sens)
         {
@@ -80,13 +122,17 @@ namespace RVP
         /// compression = 0 → fully compressed, 1 → fully extended.</summary>
         public static float SpringAccel(float springForce, float damping, float compression, float travelVel)
         {
-            return springForce * ((1f - compression) - damping * Math.Max(-1f, Math.Min(1f, travelVel)));
+            // Değişiklik: RVP sönüm hızını ±1 m/s'ye kırpıyordu → hızlı tümseklerde sönüm doyuyor, araç zıplıyordu. ±6 m/s.
+            return springForce * ((1f - compression) - damping * Math.Max(-6f, Math.Min(6f, travelVel)));
         }
 
         /// <summary>RVP hard contact (when compression hits 0): -(Clamp(travelVel, -sensitivity, 0) + penetration) * hardContactForce.</summary>
         public static float HardContactAccel(float travelVel, float penetration, float sensitivity = 2f, float force = 50f)
         {
-            return -(Math.Max(-sensitivity, Math.Min(0f, travelVel)) + penetration) * force;
+            // Değişiklik: RVP'de 50·(…) tekerlek başına ivme (sert çarpıştırıcı yokken) — gövdeye uygulanınca aracı fırlatıyordu.
+            // Ilımlı: dip vurunca yalnızca aşağı hızı sönümle + nüfuzu it, en fazla 2 g.
+            float a = Math.Max(0f, -travelVel) * 6f + Math.Max(0f, -penetration) * 60f;
+            return Math.Min(19.6f, a);
         }
 
         /// <summary>RVP VehicleAssist.ApplySpinAssist (non auto-steer branch): yaw-rate target from steering,
@@ -103,10 +149,14 @@ namespace RVP
             // aşırı savrulma (oversteer) denetimi: savrulma hızı tutuş sınırını aşınca ya da gövde kayma açısı 10°'yi
             // geçip arka dışarı kaçınca güçlü düzeltme (dönüşe girişe karışmaz — yalnızca gerçek oversteer'de)
             float beta = v > 3f ? (float)(Math.Atan2(lateralVel, Math.Abs(fwdVel)) * 180.0 / Math.PI) : 0f;
-            bool tailOut = Math.Abs(beta) > 10f && Math.Sign(beta) == -Math.Sign(yawRate);
+            // sürücü o yöne direksiyon kırıyorsa normal viraj kayması düzeltilmez (direksiyonla savaşmaz):
+            // yalnızca direksiyon nötr/ters iken araç dönmeye devam ediyorsa (gerçek oversteer)
+            bool steeringWith = Math.Abs(steerInput) > 0.15f && Math.Sign(steerInput) == Math.Sign(yawRate) * (fwdVel < 0f ? -1 : 1);
+            float betaLim = steeringWith ? 14f : 8f;
+            bool tailOut = Math.Abs(beta) > betaLim && Math.Sign(beta) == -Math.Sign(yawRate);
             float corr = 0f;
             if (Math.Abs(yawRate) > cap) corr += (Math.Abs(yawRate) - cap) * 6f;
-            if (tailOut) corr += (Math.Abs(beta) - 10f) * 0.12f;
+            if (tailOut) corr += (Math.Abs(beta) - betaLim) * 0.3f;
             if (corr > 0f) return -corr * Math.Sign(yawRate) * Math.Min(1f, spinAssist);
             float curve = Clamp01(Math.Abs(lateralVel) / 10f);   // driftSpinCurve = Linear(0,0,10,1)
             return (target - yawRate) * spinAssist * curve;

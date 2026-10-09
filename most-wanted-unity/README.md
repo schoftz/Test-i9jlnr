@@ -140,6 +140,15 @@ Duraklat → **Polis zorluğu**: Kolay (varsayılan) / Normal / Zor.
   yardımı (yalnızca kayarken; hedef savrulma tutuş sınırıyla kırpılır → denge kontrolü). Yanal kuvvet **gazdan bağımsız**;
   sadece gerçek patinaj/kilitlenmede düşer. Gaz bırakınca hafif ağırlık transferi → çok hafif lift-off oversteer.
   El freni = arka tekerler kilitlenir (RVP ebrake) → drift.
+- **Sürüş stili** (Duraklat menüsü, sadece oyuncu): **Arcade** (varsayılan, NFS hissi) / **Gerçekçi** (saf RVP ayarı).
+  Arcade: direksiyon 0 km/s %100 → 50 %85 → 100 %70 → 150 %60 → 200+ %50; hıza bağlı ek tutuş ("arcade downforce")
+  ×1.0 → ×1.6 (120 km/s) → ×1.9 (200); dönüş yardımı (direksiyonun istediği savrulma hızına, tutuşla sınırlı);
+  60 km/s üstünde fren+direksiyon → tutuş öne kayar. Aşırı kilit sınırlayıcı: ön lastik tepe kaymasını aşmaz, bu yüzden
+  yüksek hassasiyet hiçbir zaman daha az döndürmez. Simülasyon (`RvpSim.cs`, sabit hız tam kilit): 30 → 3.7 m,
+  60 → 12.5 m, 120 → 36 m.
+- **Süspansiyon** (RVP ışın): köşe başına f = 1.7 Hz, ζ = 0.5, dinlenmede ~%48 sıkışma; sönüm hızı ±6 m/s (RVP ±1 idi),
+  dip vurma kuvveti en fazla 2 g. `Tools/physics_sim/SuspSim.cs`: 5 cm bırakma 0.42 sn'de oturur (1 aşım),
+  100 km/s'de 2 cm basamakta havada kalan kare yok.
 - **Drift modu — Arcade Car Physics (Saarg, MIT)** — sadece Drift Araçları (Supra, R34, R35, M4) drift ayarı açıkken,
   garajdan çıkışta `CarController.SetPhysicsMode(true)` ile değişir. `Assets/ThirdParty/ArcadeCarPhysics`: WheelCollider,
   Saarg sürtünme eğrileri (ileri 0.4/1–0.8/0.5, yanal 0.2/1–0.5/0.75), düşük arka yanal sertlik, el freni arka yanal

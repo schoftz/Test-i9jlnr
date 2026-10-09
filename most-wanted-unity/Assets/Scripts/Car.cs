@@ -33,7 +33,10 @@ namespace MostWanted
         public float comHeight = 0.42f;
 
         // ---- Fizik modu ----
-        public bool driftMode;                  // true: Saarg (WheelCollider), false: RVP
+        public bool driftMode;
+        public bool arcade;                     // oyuncu: Arcade sürüş stili (NFS hissi)
+        public float camberDeg, rideDrop;       // F&F stance
+        public Color headColor = new Color(1f, 0.96f, 0.85f);                  // true: Saarg (WheelCollider), false: RVP
         public float driftLock = 57f;           // drift ayarı direksiyon açısı
         public const float SuspensionTravel = 0.18f;
 
@@ -163,12 +166,12 @@ namespace MostWanted
 
         void ApplySuspension()
         {
-            // ~1.7 Hz, %42 sönüm
+            // ~1.7 Hz, ζ 0.5
             float m = rb.mass;
             float corner = m / 4f;
             float freq = 1.7f + 0.1f * tune[(int)Tune.Suspansiyon];
             suspK = corner * Mathf.Pow(2f * Mathf.PI * freq, 2f);
-            suspC = 2f * 0.42f * Mathf.Sqrt(suspK * corner);
+            suspC = 2f * 0.5f * Mathf.Sqrt(suspK * corner);   // ζ = 0.5 (zıplamasın)
             for (int i = 0; i < 4; i++)
             {
                 if (wheels[i] != null) wheels[i].suspensionSpring = new JointSpring { spring = suspK, damper = suspC, targetPosition = 0.5f };
@@ -261,7 +264,10 @@ namespace MostWanted
             else
             {
                 // RVP SteeringControl: steerCurve(hız) * aralık — gazdan bağımsız; hızlı tepki (tam kilit 0.12 sn, dönüş 0.08 sn)
-                float limit = maxSteer * RvpTire.SteerCurve(fwd) * steerSens * steerBoost;
+                float limit = maxSteer * (arcade ? RvpTire.SteerCurveArcade(fwd) : RvpTire.SteerCurve(fwd)) * steerSens * steerBoost;
+                // aşırı kilit sınırı (hassasiyetle birlikte büyür → yüksek değer her zaman ≥ düşük değer)
+                float muS = 1.05f * grip * (arcade ? RvpTire.ArcadeGrip(kmh) * 1.4f : 1.4f);
+                limit = Mathf.Min(limit, RvpTire.SteerOptimal(fwd, wheelBase, muS) * (0.95f + 0.25f * steerSens));
                 if (handbrake) limit = Mathf.Max(limit, maxSteer * 0.6f);
                 target = Mathf.Clamp(steer * limit, -maxSteer * 1.1f, maxSteer * 1.1f);
                 bool ret = Mathf.Abs(target) < Mathf.Abs(curSteer) || target * curSteer < 0f;
@@ -393,6 +399,12 @@ namespace MostWanted
                 float bAcc = hold ? 12f : brk * (front ? 1.2f : 0.8f) / wheelRadius / m;
                 float spin = -1f;
                 float gF, gR; RvpTire.SideGrip(kmh, out gF, out gR);
+                if (arcade)
+                {
+                    float ag = RvpTire.ArcadeGrip(kmh); gF *= handbrake ? 1f : ag; gR *= ag;   // el freninde ön ek tutuş yok → tutulabilir drift
+                    // fren + direksiyon (60+ km/s): tutuş öne kayar → daha keskin dönüşe giriş
+                    if (throttle < -0.1f && Mathf.Abs(steer) > 0.2f && kmh > 60f) { gF *= 1.15f; gR *= 0.93f; }
+                }
                 float sideMul = front ? gF * (1f + 0.05f * liftBlend) : gR * (1f - 0.04f * liftBlend);   // yüksek hızda arka ≥ ön; gaz bırakınca hafif oversteer
                 if (!front && handbrake && !hold)
                 {
@@ -406,7 +418,9 @@ namespace MostWanted
             // RVP VehicleAssist: savrulma yardımı (sadece kayarken etkin) — gazdan bağımsız
             if (gc > 0 && !hold)
             {
-                float yawAcc = RvpTire.SpinAssist(steer, fwd, lv.x, rb.angularVelocity.y, 2.2f, 1.6f * stabilityAssist / 0.45f, curSteer, wheelBase, mu);
+                float muEff = arcade ? mu * RvpTire.ArcadeGrip(kmh) * 1.3f : mu;
+                float yawAcc = RvpTire.SpinAssist(steer, fwd, lv.x, rb.angularVelocity.y, 2.2f, 1.6f * stabilityAssist / 0.45f, curSteer, wheelBase, muEff);
+                if (arcade && !handbrake) yawAcc += RvpTire.ArcadeTurnIn(steer, fwd, rb.angularVelocity.y, curSteer, wheelBase, muEff);
                 rb.AddTorque(transform.up * yawAcc, ForceMode.Acceleration);
             }
         }
@@ -531,6 +545,7 @@ namespace MostWanted
                 if (wheels[i] == null || wheelVis[i] == null) continue;
                 Vector3 p; Quaternion q;
                 wheels[i].GetWorldPose(out p, out q);
+                if (camberDeg != 0f) q = Quaternion.AngleAxis((i % 2 == 0 ? -1f : 1f) * camberDeg, transform.forward) * q;
                 wheelVis[i].SetPositionAndRotation(p, q);
             }
             float b = braking || handbrake ? 3f : 0.6f;
@@ -563,9 +578,17 @@ namespace MostWanted
             foreach (var m in paintMats) U.ApplyPaint(m, p);
         }
 
+        /// <summary>F&amp;F stance: gövdeyi alçalt (süspansiyon bağlantıları yukarı) ve görsel kamber.</summary>
+        public void SetStance(float drop, float camber)
+        {
+            for (int i = 0; i < 4; i++) if (wheelAnchor[i] != null) wheelAnchor[i].localPosition += Vector3.up * (drop - rideDrop);
+            rideDrop = drop; camberDeg = camber;
+            for (int i = 0; i < 4; i++) if (rvp[i] != null) rvp[i].camber = (i % 2 == 0 ? -1f : 1f) * camber;
+        }
+
         public void SetHeadlights(bool on)
         {
-            foreach (var m in headMats) U.SetEmission(m, on ? new Color(2.5f, 2.4f, 2.1f) : new Color(0.4f, 0.4f, 0.38f));
+            foreach (var m in headMats) U.SetEmission(m, on ? headColor * 2.5f : headColor * 0.4f);
         }
     }
 

@@ -53,6 +53,7 @@ namespace MostWanted
             float dtU = Time.unscaledDeltaTime;
             steerSmooth = Mathf.MoveTowards(steerSmooth, st, dtU * (Mathf.Abs(st) > Mathf.Abs(steerSmooth) ? 8f : 12f));
             car.steerSens = SaveSystem.Data != null ? SaveSystem.Data.steerSens : 1f;
+            car.arcade = SaveSystem.Data == null || SaveSystem.Data.driveStyle == 0;
             car.throttle = th;
             car.manualGearbox = drag;
 
