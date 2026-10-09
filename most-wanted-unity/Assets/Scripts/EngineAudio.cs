@@ -265,7 +265,7 @@ namespace MostWanted
             // "Egzoz" performans paketi: daha yüksek ses, daha çok patlama
             exhaustLevel = car != null && car.tune != null && car.tune.Length > (int)Tune.Egzoz ? car.tune[(int)Tune.Egzoz] : 0;
             exhaustGain = 1f + 0.22f * exhaustLevel;
-            popChance = Mathf.Clamp01(popChance * (1f + 0.5f * exhaustLevel));
+            popChance = Mathf.Clamp01(popChance * 0.3f * (1f + 0.3f * exhaustLevel));   // seyrek: patlamalar nadir olsun
         }
 
         /// <summary>Garajdaki "Motor Sesi" değişimi sonrası yeniden yapılandır.</summary>
@@ -365,10 +365,10 @@ namespace MostWanted
             bool overrun = th < 0.1f && rpm > redline * 0.55f && kmh > 30f;
             popCooldown -= dt;
             // patlama: yüksek devirden gaz kesince; kalkışta/düşük devirde yok, en az 0.25 sn arayla
-            if (overrun && rpm > 3000f && kmh > 40f && lastThrottle > 0.5f && popCooldown <= 0f && Random.value < popChance)
+            if (overrun && rpm > 4500f && kmh > 50f && lastThrottle > 0.8f && popCooldown <= 0f && Random.value < popChance)
             {
-                popRequest = Random.Range(1, 3 + exhaustLevel);
-                popCooldown = 0.25f;
+                popRequest = 1;
+                popCooldown = 2.5f;
             }
             if (popFlash > 0)
             {
@@ -690,10 +690,10 @@ namespace MostWanted
             popRasp = last ? 1f : 0f;
             crackleBp.Bandpass(Mathf.Lerp(700f, 1800f, r3), 0.9f, sr);
             crackA = 1f - Mathf.Exp(-2f * Mathf.PI * 3000f / sr);
-            popAmp = strength * (0.75f + 0.5f * r2);
+            popAmp = strength * (0.45f + 0.3f * r2);
             popPhase = 0.0;
             popFlash = 1;
-            if (chain && popQueue == 0) popQueue = 1 + (int)(r1 * 2.99f);
+            if (chain && popQueue == 0 && r1 > 0.75f) popQueue = 1;
             popGap = Mathf.Lerp(0.06f, 0.12f, r3);
         }
     }
